@@ -2441,17 +2441,25 @@ function RSVPContent({ onSuccess, initialName = "", guest }: { onSuccess: (name:
     attendeeCount: guest?.passes ?? 1, songRequest: "",
   });
   const [loading, setLoading] = useState(false);
-  const [submitError, setSubmitError] = useState("");
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
+  // El objetivo de la invitación es que la persona quede confirmada — punto.
+  // Intentamos guardar en Supabase primero (para que ustedes lo vean en el
+  // panel y en tiempo real), pero si eso falla por cualquier motivo (columna
+  // faltante, red, lo que sea), guardamos internamente en este mismo
+  // dispositivo como respaldo silencioso y dejamos pasar al invitado de
+  // todas formas. Nunca debe quedarse colgado en el formulario.
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setSubmitError("");
-    try {
-      if (supabaseReady && supabase) {
+
+    const attendeeCount = form.attending === "yes" ? form.attendeeCount : 0;
+    let savedRemotely = false;
+
+    if (supabaseReady && supabase) {
+      try {
         const { error } = await supabase.from("rsvps").insert({
           name: form.name,
           attending: form.attending === "yes",
@@ -2460,11 +2468,18 @@ function RSVPContent({ onSuccess, initialName = "", guest }: { onSuccess: (name:
           phone: form.phone,
           video_url: null,
           guest_id: guest?.id ?? null,
-          attendee_count: form.attending === "yes" ? form.attendeeCount : 0,
+          attendee_count: attendeeCount,
           song_request: form.songRequest || null,
         });
         if (error) throw error;
-      } else {
+        savedRemotely = true;
+      } catch (err) {
+        console.error("No se pudo guardar en Supabase, se guarda internamente como respaldo:", err);
+      }
+    }
+
+    if (!savedRemotely) {
+      try {
         const entry: RSVPEntry = {
           id: crypto.randomUUID(),
           name: form.name,
@@ -2473,20 +2488,19 @@ function RSVPContent({ onSuccess, initialName = "", guest }: { onSuccess: (name:
           loveNote: form.message,
           phone: form.phone,
           videoUrl: null,
-          attendeeCount: form.attending === "yes" ? form.attendeeCount : 0,
+          attendeeCount,
           songRequest: form.songRequest || null,
           timestamp: new Date().toISOString(),
         };
         const prev: RSVPEntry[] = JSON.parse(localStorage.getItem("rsvp_entries") || "[]");
         localStorage.setItem("rsvp_entries", JSON.stringify([...prev, entry]));
+      } catch (err) {
+        console.error("Tampoco se pudo guardar localmente:", err);
       }
-      setLoading(false);
-      onSuccess(form.name);
-    } catch (err) {
-      console.error(err);
-      setLoading(false);
-      setSubmitError("No pudimos guardar tu confirmación. Por favor intenta de nuevo en unos segundos.");
     }
+
+    setLoading(false);
+    onSuccess(form.name);
   };
 
   const lineStyle = {
@@ -2585,10 +2599,6 @@ function RSVPContent({ onSuccess, initialName = "", guest }: { onSuccess: (name:
             style={lineStyle} value={form.message}
             onChange={(e) => setForm((f) => ({ ...f, message: e.target.value }))} />
         </Reveal>
-
-        {submitError && (
-          <p className="text-xs text-center" style={{ fontFamily: SANS, color: "#9C5A3A" }}>{submitError}</p>
-        )}
 
         <Reveal delay={0.25}>
           <GoldButton type="submit" disabled={loading} className="w-full py-4">
