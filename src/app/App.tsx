@@ -337,12 +337,24 @@ function MoreDetailsHub({ rsvpName, onRsvpSuccess, guestName, guest }: { rsvpNam
               >
                 <div className="relative flex items-center justify-center" style={{ height: 64 }}>
                   {item.featured && (
-                    <motion.div
-                      className="absolute rounded-full"
-                      style={{ width: 76, height: 76, background: `radial-gradient(circle, rgba(196,168,130,0.4), transparent 70%)` }}
-                      animate={{ scale: [1, 1.3, 1], opacity: [0.65, 0.1, 0.65] }}
-                      transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
-                    />
+                    <>
+                      <motion.div
+                        className="absolute rounded-full"
+                        style={{ width: 76, height: 76, background: `radial-gradient(circle, rgba(196,168,130,0.4), transparent 70%)` }}
+                        animate={{ scale: [1, 1.3, 1], opacity: [0.65, 0.1, 0.65] }}
+                        transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
+                      />
+                      {/* Anillo estilo "botón de WhatsApp" — dos ondas de borde que se expanden y desvanecen */}
+                      {[0, 0.9].map((delay) => (
+                        <motion.div
+                          key={delay}
+                          className="absolute rounded-full"
+                          style={{ width: 64, height: 64, border: `2px solid ${GOLD}` }}
+                          animate={{ scale: [1, 1.7], opacity: [0.55, 0] }}
+                          transition={{ duration: 1.8, repeat: Infinity, ease: "easeOut", delay }}
+                        />
+                      ))}
+                    </>
                   )}
                   <motion.div
                     className="relative w-16 h-16 rounded-full flex items-center justify-center group-hover:scale-105"
@@ -1212,12 +1224,14 @@ function TimelineContent() {
 
 function DressCodeContent() {
   const colors = [
-    { name: "Blanco", hex: "#FFFBF5", note: "Reservado para la novia" },
-    { name: "Marfil", hex: "#FEFBF2" },
-    { name: "Arena", hex: "#F5EBD9", note: "Reservado para el novio" },
+    { name: "Blanco", hex: "#FFFBF5", note: "Reservado para los novios" },
+    { name: "Arena claro", hex: "#F5EBD9", note: "Reservado para los novios" },
     { name: "Beige claro", hex: "#ECDCC0" },
     { name: "Beige oscuro", hex: "#D4C4A8" },
     { name: "Crema", hex: "#FAF6EE" },
+    { name: "Rosa pastel", hex: "#F3D9D5" },
+    { name: "Azul pastel", hex: "#D6E4E5" },
+    { name: "Verde salvia", hex: "#D9DFC9" },
   ];
 
   return (
@@ -1267,7 +1281,7 @@ function DressCodeContent() {
           <ul className="space-y-3 text-sm" style={{ fontFamily: SANS, color: TAN }}>
             <li className="flex gap-3">
               <span style={{ color: GOLD }}>✓</span>
-              <span>Tonos claros y pasteles son bienvenidos</span>
+              <span>Colores pasteles y tonos beige son bienvenidos</span>
             </li>
             <li className="flex gap-3">
               <span style={{ color: GOLD }}>✓</span>
@@ -1276,6 +1290,10 @@ function DressCodeContent() {
             <li className="flex gap-3">
               <span style={{ color: GOLD }}>✓</span>
               <span>Accesorios dorados complementan perfecto</span>
+            </li>
+            <li className="flex gap-3">
+              <span style={{ color: GOLD }}>✗</span>
+              <span>El blanco y el arena claro están reservados para los novios</span>
             </li>
             <li className="flex gap-3">
               <span style={{ color: GOLD }}>✗</span>
@@ -2171,7 +2189,7 @@ function OurStoryContent() {
     { date: "Febrero 2025",   title: "El primer encuentro",     desc: "Nos conocimos en el gimnasio. Yo vendía champús y no pude evitar fijarme en lo hermoso de su cabello — fue la excusa perfecta para acercarme a ella.", img: IMG.historiaEncuentro },
     { date: "Febrero 2025",   title: "La invitación a la iglesia", desc: "Poco después la invité a la iglesia. Nos gustó tanto ir juntos que fue el primer paso de algo que Dios ya había preparado para nosotros.", img: IMG.historiaIglesia },
     { date: "Abril 2025",     title: "Nuestra primera cita",    desc: "En abril tuvimos nuestra primera cita, entre risas y buena mesa — y supimos que queríamos muchos más momentos así.", img: IMG.historiaCita },
-    { date: "30 Mayo 2025",   title: "Novios",                  desc: "El 30 de mayo formalizamos nuestro amor y comenzamos esta historia juntos, de la mano.", img: IMG.historiaNovios },
+    { date: "31 Mayo 2025",   title: "Novios",                  desc: "El 31 de mayo formalizamos nuestro amor y comenzamos esta historia juntos, de la mano.", img: IMG.historiaNovios },
     { date: "25 Feb 2026",    title: "El compromiso",           desc: "En casa, rodeados de quienes más amamos, el día de su cumpleaños, le pedí matrimonio a Ingrid — y ella dijo que sí.", img: IMG.historiaCompromiso },
     { date: "5 Dic 2026",     title: "Para siempre",            desc: "El capítulo más bello de nuestra historia comienza aquí, con Él como fundamento.", img: IMG.historiaBoda },
   ];
