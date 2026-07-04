@@ -2441,6 +2441,7 @@ function RSVPContent({ onSuccess, initialName = "", guest }: { onSuccess: (name:
     attendeeCount: guest?.passes ?? 1, songRequest: "",
   });
   const [loading, setLoading] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -2448,6 +2449,7 @@ function RSVPContent({ onSuccess, initialName = "", guest }: { onSuccess: (name:
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setSubmitError("");
     try {
       if (supabaseReady && supabase) {
         const { error } = await supabase.from("rsvps").insert({
@@ -2483,6 +2485,7 @@ function RSVPContent({ onSuccess, initialName = "", guest }: { onSuccess: (name:
     } catch (err) {
       console.error(err);
       setLoading(false);
+      setSubmitError("No pudimos guardar tu confirmación. Por favor intenta de nuevo en unos segundos.");
     }
   };
 
@@ -2582,6 +2585,10 @@ function RSVPContent({ onSuccess, initialName = "", guest }: { onSuccess: (name:
             style={lineStyle} value={form.message}
             onChange={(e) => setForm((f) => ({ ...f, message: e.target.value }))} />
         </Reveal>
+
+        {submitError && (
+          <p className="text-xs text-center" style={{ fontFamily: SANS, color: "#9C5A3A" }}>{submitError}</p>
+        )}
 
         <Reveal delay={0.25}>
           <GoldButton type="submit" disabled={loading} className="w-full py-4">
@@ -2706,10 +2713,10 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
   useEffect(() => {
     if (!supabaseReady || !supabase) return;
-    supabase.from("guests").select("*").order("side").order("display_name").then(({ data, error }) => {
+    supabase.from("invitados").select("*").order("grupo").order("nombre").then(({ data, error }) => {
       if (error) { console.error(error); return; }
       setGuests((data ?? []).map((row) => ({
-        id: row.id, slug: row.slug, displayName: row.display_name, side: row.side, passes: row.passes,
+        id: row.id, slug: row.slug, displayName: row.nombre, side: row.grupo, passes: row.pases,
       })));
     });
   }, []);
@@ -3224,7 +3231,7 @@ export default function App() {
     const safetyTimeout = window.setTimeout(() => setGuestLoading(false), 4000);
 
     supabase
-      .from("guests")
+      .from("invitados")
       .select("*")
       .ilike("slug", groupSlug) // sin comodines: comparación exacta pero insensible a mayúsculas
       .single()
@@ -3238,11 +3245,11 @@ export default function App() {
         setGuest({
           id: data.id,
           slug: data.slug,
-          displayName: data.display_name,
-          side: data.side,
-          passes: data.passes,
+          displayName: data.nombre,
+          side: data.grupo,
+          passes: data.pases,
         });
-        setGuestName(data.display_name);
+        setGuestName(data.nombre);
       })
       .finally(() => {
         window.clearTimeout(safetyTimeout);

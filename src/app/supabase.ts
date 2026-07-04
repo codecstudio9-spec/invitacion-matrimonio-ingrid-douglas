@@ -1,11 +1,13 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// La clave "anon/publishable" de Supabase no es secreta — está pensada para
+// vivir en el navegador (la seguridad real la dan las políticas RLS). Vite ya
+// hornea el valor de la variable de entorno directo en el JS del build, así
+// que este respaldo no expone nada que no estuviera ya expuesto. Si la
+// variable de entorno existe, se usa esa; solo si viniera vacía, cae aquí.
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://cmxqwgvwxahuluaaqisc.supabase.co";
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "sb_publishable_c_sm1mlwt2RRWKGqdtjadw_wyPIjNre";
 
-// True once real credentials are present in .env.local (or Vercel's env vars) —
-// until then, every Supabase-backed feature (guest photos/videos, shared RSVPs)
-// shows a "not configured yet" state instead of crashing the rest of the site.
 export const supabaseReady = Boolean(supabaseUrl && supabaseAnonKey);
 
 export const supabase: SupabaseClient | null = supabaseReady
