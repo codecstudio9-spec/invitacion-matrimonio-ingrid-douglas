@@ -821,7 +821,7 @@ function HeroSection() {
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1.2, delay: 1.2 }}
-          className="text-base tracking-[0.32em] uppercase"
+          className="text-[17px] tracking-[0.32em] uppercase"
           style={{ fontFamily: SANS, color: "#E8DECE", fontWeight: 300 }}
         >
           Nos casamos
@@ -835,7 +835,7 @@ function HeroSection() {
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1.2, delay: 1.6 }}
-          className="text-sm max-w-sm leading-relaxed"
+          className="text-[15px] max-w-sm leading-relaxed"
           style={{ fontFamily: SANS, color: "rgba(235,222,205,0.85)", fontWeight: 300 }}
         >
           Con la bendición de Dios, la compañía de nuestras familias y la presencia de aquellos que más amamos,
@@ -846,7 +846,7 @@ function HeroSection() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 1.2, delay: 1.9 }}
-          className="text-sm mt-4 italic"
+          className="text-[15px] mt-4 italic"
           style={{ fontFamily: SCRIPT, color: "rgba(230,215,195,0.75)" }}
         >
           "Por tanto, lo que Dios juntó, no lo separe el hombre" — Marcos 10:9 (RVR1960)
@@ -981,13 +981,13 @@ function VerseBanner() {
             <rect x="12" y="0" width="4" height="40" rx="2" fill={GOLD} opacity="0.75" />
             <rect x="0" y="12" width="28" height="4" rx="2" fill={GOLD} opacity="0.75" />
           </svg>
-          <p className="text-xl sm:text-2xl leading-relaxed mb-4" style={{ fontFamily: SCRIPT, color: "#EDE4D0" }}>
+          <p className="text-[22px] sm:text-[26px] leading-relaxed mb-4" style={{ fontFamily: SCRIPT, color: "#EDE4D0" }}>
             "El amor es sufrido, es benigno; el amor no tiene envidia, el amor no es jactancioso, no se envanece;<br />
             no hace nada indebido, no busca lo suyo, no se irrita, no guarda rencor;<br />
             no se goza de la injusticia, mas se goza de la verdad.<br />
             Todo lo sufre, todo lo cree, todo lo espera, todo lo soporta."
           </p>
-          <p className="text-[10px] tracking-[0.4em] uppercase mt-4" style={{ fontFamily: SANS, color: GOLD }}>
+          <p className="text-[11px] tracking-[0.4em] uppercase mt-4" style={{ fontFamily: SANS, color: GOLD }}>
             1 Corintios 13:4-7 (RVR1960)
           </p>
         </Reveal>
