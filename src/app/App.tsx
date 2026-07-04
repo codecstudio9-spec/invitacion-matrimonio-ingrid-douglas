@@ -5,7 +5,7 @@ import {
   ChevronDown, X, Send, Navigation, Video, Upload, FolderPlus,
   ExternalLink, Heart, Star, Lock, Search, MessageCircle,
   Check, Users, PenLine, ChevronLeft, ChevronRight,
-  Shirt, BookOpen, Images, Gift, Banknote,
+  Shirt, BookOpen, Images, Gift, Banknote, Music,
 } from "lucide-react";
 import { supabase, supabaseReady, GUEST_MEDIA_BUCKET, VIDEO_GREETINGS_BUCKET } from "./supabase";
 
@@ -19,6 +19,8 @@ interface RSVPEntry {
   loveNote: string;
   phone: string;
   videoUrl: string | null;
+  attendeeCount: number | null;
+  songRequest: string | null;
   timestamp: string;
 }
 
@@ -42,6 +44,22 @@ interface GalleryComment {
 interface GalleryPhotoData {
   likes: number;
   comments: GalleryComment[];
+}
+
+interface GuestRecord {
+  id: string;
+  slug: string;
+  displayName: string;
+  side: "ingrid" | "douglas";
+  passes: number;
+}
+
+interface GuestMediaComment {
+  id: string;
+  mediaId: string;
+  name: string;
+  message: string;
+  timestamp: string;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -256,8 +274,8 @@ function SectionTitle({ children, italic = true }: { children: React.ReactNode; 
 
 /** All the "extra" sections collapsed behind circular buttons, 2 per row, so the
  *  page stays short — tapping a circle expands just that section beneath the grid. */
-function MoreDetailsHub({ rsvpName, onRsvpSuccess, guestName }: { rsvpName: string | null; onRsvpSuccess: (name: string) => void; guestName: string }) {
-  const RSVPItemContent = () => <RSVPHubContent rsvpName={rsvpName} onSuccess={onRsvpSuccess} guestName={guestName} />;
+function MoreDetailsHub({ rsvpName, onRsvpSuccess, guestName, guest }: { rsvpName: string | null; onRsvpSuccess: (name: string) => void; guestName: string; guest: GuestRecord | null }) {
+  const RSVPItemContent = () => <RSVPHubContent rsvpName={rsvpName} onSuccess={onRsvpSuccess} guestName={guestName} guest={guest} />;
 
   const items = [
     { key: "itinerario", icon: Clock,    label: "Itinerario",           title: "Itinerario del día",  Content: TimelineContent,  featured: false },
@@ -1502,6 +1520,10 @@ function GuestMediaContent() {
   const [likedByMe, setLikedByMe] = useState<Set<string>>(() => {
     try { return new Set<string>(JSON.parse(localStorage.getItem("guest_media_liked") || "[]")); } catch { return new Set(); }
   });
+  const [activeItem, setActiveItem] = useState<GuestMediaItem | null>(null);
+  const [comments, setComments] = useState<GuestMediaComment[]>([]);
+  const [commentForm, setCommentForm] = useState({ name: "", message: "" });
+  useBodyScrollLock(!!activeItem);
 
   useEffect(() => {
     if (!supabaseReady || !supabase) return;
@@ -1530,6 +1552,41 @@ function GuestMediaContent() {
 
     return () => { supabase.removeChannel(channel); };
   }, []);
+
+  // All comments, kept live — filtered per photo/video when the lightbox is open
+  useEffect(() => {
+    if (!supabaseReady || !supabase) return;
+    const fetchComments = async () => {
+      const { data, error } = await supabase
+        .from("guest_media_comments")
+        .select("*")
+        .order("created_at", { ascending: true });
+      if (error) { console.error(error); return; }
+      setComments((data ?? []).map((row) => ({
+        id: row.id, mediaId: row.media_id, name: row.name, message: row.message, timestamp: row.created_at,
+      })));
+    };
+    fetchComments();
+
+    const channel = supabase
+      .channel("guest_media_comments_changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "guest_media_comments" }, fetchComments)
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  const handleAddComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supabase || !activeItem || !commentForm.name.trim() || !commentForm.message.trim()) return;
+    const { error } = await supabase.from("guest_media_comments").insert({
+      media_id: activeItem.id,
+      name: commentForm.name.trim(),
+      message: commentForm.message.trim(),
+    });
+    if (error) { console.error(error); return; }
+    setCommentForm((f) => ({ ...f, message: "" }));
+  };
 
   const folders = Array.from(new Set([...GUEST_MEDIA_DEFAULT_FOLDERS, ...items.map((i) => i.folder)]));
 
@@ -1664,26 +1721,46 @@ function GuestMediaContent() {
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                 {visible.map((item, i) => {
                   const liked = likedByMe.has(item.id);
+                  const commentCount = comments.filter((c) => c.mediaId === item.id).length;
                   return (
                     <Reveal key={item.id} delay={Math.min(i * 0.03, 0.3)}>
-                      <div className="relative rounded-lg overflow-hidden" style={{ aspectRatio: "4/5" }}>
+                      <motion.button
+                        type="button"
+                        onClick={() => setActiveItem(item)}
+                        whileHover={{ scale: 1.03 }}
+                        whileTap={{ scale: 0.97 }}
+                        className="relative w-full rounded-lg overflow-hidden"
+                        style={{ aspectRatio: "4/5" }}
+                      >
                         {item.type === "photo" ? (
                           <img src={item.url} alt="" className="w-full h-full object-cover" />
                         ) : (
-                          <video src={item.url} className="w-full h-full object-cover" controls playsInline />
+                          <video src={item.url} className="w-full h-full object-cover" muted playsInline />
+                        )}
+                        {item.type === "video" && (
+                          <div className="absolute inset-0 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.15)" }}>
+                            <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.45)" }}>
+                              <Video style={{ width: 16, height: 16, color: CREAM }} />
+                            </div>
+                          </div>
                         )}
                         <div className="absolute bottom-0 inset-x-0 px-2 py-1.5 flex items-center justify-between"
                           style={{ background: "linear-gradient(to top, rgba(0,0,0,0.6), transparent)" }}>
                           <span className="text-[9px] tracking-widest uppercase truncate" style={{ fontFamily: SANS, color: CREAM }}>{item.name}</span>
-                          <button
-                            onClick={() => toggleLike(item.id)}
-                            className="flex items-center gap-1 flex-shrink-0"
-                          >
-                            <Heart style={{ width: 13, height: 13 }} fill={liked ? GOLD : "none"} stroke={CREAM} />
-                            <span className="text-[10px]" style={{ fontFamily: SANS, color: CREAM }}>{item.likes}</span>
-                          </button>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <span className="flex items-center gap-1">
+                              <Heart style={{ width: 12, height: 12 }} fill={liked ? GOLD : "none"} stroke={CREAM} />
+                              <span className="text-[10px]" style={{ fontFamily: SANS, color: CREAM }}>{item.likes}</span>
+                            </span>
+                            {commentCount > 0 && (
+                              <span className="flex items-center gap-1">
+                                <MessageCircle style={{ width: 12, height: 12 }} stroke={CREAM} />
+                                <span className="text-[10px]" style={{ fontFamily: SANS, color: CREAM }}>{commentCount}</span>
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
+                      </motion.button>
                     </Reveal>
                   );
                 })}
@@ -1691,6 +1768,91 @@ function GuestMediaContent() {
             )}
           </>
         )}
+
+        {/* Lightbox — foto/video grande, like, y comentarios en tiempo real para todos */}
+        <AnimatePresence>
+          {activeItem && (
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[80] flex items-center justify-center p-4"
+              style={{ background: "rgba(20,14,6,0.85)" }}
+              onClick={() => setActiveItem(null)}
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.94, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }}
+                transition={{ duration: 0.25 }}
+                onClick={(e) => e.stopPropagation()}
+                className="relative w-full max-w-md max-h-[90vh] overflow-y-auto rounded-lg"
+                style={{ background: "#FFFBF2" }}
+              >
+                <button
+                  onClick={() => setActiveItem(null)}
+                  aria-label="Cerrar"
+                  className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full flex items-center justify-center"
+                  style={{ background: "rgba(0,0,0,0.45)" }}
+                >
+                  <X style={{ width: 16, height: 16, color: CREAM }} />
+                </button>
+
+                <div style={{ aspectRatio: "4/5" }}>
+                  {activeItem.type === "photo" ? (
+                    <img src={activeItem.url} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <video src={activeItem.url} className="w-full h-full object-cover" controls autoPlay playsInline />
+                  )}
+                </div>
+
+                <div className="p-5">
+                  <button
+                    onClick={() => toggleLike(activeItem.id)}
+                    className="flex items-center gap-2 mb-2 transition-transform active:scale-95"
+                  >
+                    <Heart
+                      style={{ width: 20, height: 20 }}
+                      fill={likedByMe.has(activeItem.id) ? GOLD : "none"}
+                      stroke={likedByMe.has(activeItem.id) ? GOLD : TAN}
+                    />
+                    <span className="text-sm" style={{ fontFamily: SANS, color: BROWN }}>{activeItem.likes} me gusta</span>
+                  </button>
+                  <p className="text-[10px] tracking-widest uppercase mb-5" style={{ fontFamily: SANS, color: GOLD }}>
+                    Subido por {activeItem.name}
+                  </p>
+
+                  {comments.filter((c) => c.mediaId === activeItem.id).length > 0 && (
+                    <div className="space-y-3 mb-5">
+                      {comments.filter((c) => c.mediaId === activeItem.id).map((c) => (
+                        <div key={c.id} className="p-3 rounded" style={{ background: "rgba(196,168,130,0.08)" }}>
+                          <p className="text-sm mb-1" style={{ fontFamily: SANS, color: BROWN }}>{c.message}</p>
+                          <p className="text-[10px] tracking-widest uppercase" style={{ fontFamily: SANS, color: GOLD }}>— {c.name}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <form onSubmit={handleAddComment} className="space-y-3">
+                    <input
+                      type="text" placeholder="Tu nombre" required
+                      className="w-full px-0 py-2 bg-transparent border-b text-sm outline-none"
+                      style={{ fontFamily: SANS, color: BROWN, borderBottomColor: "rgba(196,168,130,0.4)" }}
+                      value={commentForm.name}
+                      onChange={(e) => setCommentForm((f) => ({ ...f, name: e.target.value }))}
+                    />
+                    <textarea
+                      placeholder="Deja tu comentario..." rows={2} required
+                      className="w-full px-0 py-2 bg-transparent border-b text-sm outline-none resize-none"
+                      style={{ fontFamily: SANS, color: BROWN, borderBottomColor: "rgba(196,168,130,0.4)" }}
+                      value={commentForm.message}
+                      onChange={(e) => setCommentForm((f) => ({ ...f, message: e.target.value }))}
+                    />
+                    <GoldButton type="submit" className="w-full py-2.5">
+                      <Send style={{ width: 13, height: 13 }} /> Comentar
+                    </GoldButton>
+                  </form>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
     </div>
   );
 }
@@ -2067,8 +2229,11 @@ function LoveNotesContent() {
 
 // ─── RSVP ─────────────────────────────────────────────────────────────────────
 
-function RSVPContent({ onSuccess, initialName = "" }: { onSuccess: (name: string) => void; initialName?: string }) {
-  const [form, setForm] = useState({ name: initialName, phone: "", attending: "yes", dietary: "", message: "" });
+function RSVPContent({ onSuccess, initialName = "", guest }: { onSuccess: (name: string) => void; initialName?: string; guest: GuestRecord | null }) {
+  const [form, setForm] = useState({
+    name: initialName, phone: "", attending: "yes", dietary: "", message: "",
+    attendeeCount: guest?.passes ?? 1, songRequest: "",
+  });
   const [loading, setLoading] = useState(false);
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
@@ -2086,6 +2251,9 @@ function RSVPContent({ onSuccess, initialName = "" }: { onSuccess: (name: string
           love_note: form.message,
           phone: form.phone,
           video_url: null,
+          guest_id: guest?.id ?? null,
+          attendee_count: form.attending === "yes" ? form.attendeeCount : 0,
+          song_request: form.songRequest || null,
         });
         if (error) throw error;
       } else {
@@ -2097,6 +2265,8 @@ function RSVPContent({ onSuccess, initialName = "" }: { onSuccess: (name: string
           loveNote: form.message,
           phone: form.phone,
           videoUrl: null,
+          attendeeCount: form.attending === "yes" ? form.attendeeCount : 0,
+          songRequest: form.songRequest || null,
           timestamp: new Date().toISOString(),
         };
         const prev: RSVPEntry[] = JSON.parse(localStorage.getItem("rsvp_entries") || "[]");
@@ -2120,7 +2290,14 @@ function RSVPContent({ onSuccess, initialName = "" }: { onSuccess: (name: string
   return (
     <div className="max-w-md mx-auto">
       <Ornament />
-      <form onSubmit={handleSubmit} className="space-y-6 mt-8 text-left">
+
+      {guest && (
+        <p className="text-center text-xs mb-6 -mt-2" style={{ fontFamily: SANS, color: TAN }}>
+          Tienen <strong style={{ color: BROWN }}>{guest.passes}</strong> {guest.passes === 1 ? "pase disponible" : "pases disponibles"}
+        </p>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-6 mt-2 text-left">
         <Reveal>
           <input required type="text" placeholder="Nombre completo *"
             className="w-full px-0 py-3 bg-transparent border-b outline-none text-sm placeholder:text-[#C4A882]/50"
@@ -2151,10 +2328,46 @@ function RSVPContent({ onSuccess, initialName = "" }: { onSuccess: (name: string
           </div>
         </Reveal>
 
+        {guest && form.attending === "yes" && (
+          <Reveal delay={0.12}>
+            <div>
+              <p className="text-[10px] tracking-[0.35em] uppercase mb-3" style={{ fontFamily: SANS, color: GOLD }}>
+                ¿Cuántos de ustedes asistirán?
+              </p>
+              <div className="flex items-center gap-5">
+                <button type="button"
+                  onClick={() => setForm((f) => ({ ...f, attendeeCount: Math.max(1, f.attendeeCount - 1) }))}
+                  className="w-9 h-9 rounded-full flex items-center justify-center"
+                  style={{ border: `1px solid rgba(196,168,130,0.4)`, color: GOLD }}>
+                  <Minus style={{ width: 14, height: 14 }} />
+                </button>
+                <span className="text-xl" style={{ fontFamily: SERIF, color: BROWN }}>{form.attendeeCount}</span>
+                <button type="button"
+                  onClick={() => setForm((f) => ({ ...f, attendeeCount: Math.min(guest.passes, f.attendeeCount + 1) }))}
+                  className="w-9 h-9 rounded-full flex items-center justify-center"
+                  style={{ border: `1px solid rgba(196,168,130,0.4)`, color: GOLD }}>
+                  <Plus style={{ width: 14, height: 14 }} />
+                </button>
+                <span className="text-xs" style={{ fontFamily: SANS, color: TAN }}>de {guest.passes} pases</span>
+              </div>
+            </div>
+          </Reveal>
+        )}
+
         <Reveal delay={0.15}>
           <input type="text" placeholder="Restricciones alimenticias"
             className="w-full px-0 py-3 bg-transparent border-b outline-none text-sm placeholder:text-[#C4A882]/50"
             style={lineStyle} value={form.dietary} onChange={set("dietary")} />
+        </Reveal>
+
+        <Reveal delay={0.18}>
+          <label className="flex items-center gap-3 px-4 py-3 cursor-text" style={{ border: `1px dashed rgba(196,168,130,0.45)`, borderRadius: 4 }}>
+            <Music style={{ width: 16, height: 16, color: GOLD, flexShrink: 0 }} />
+            <input type="text" placeholder="Una canción que no puede faltar (opcional)"
+              className="w-full bg-transparent outline-none text-sm"
+              style={{ fontFamily: SANS, color: BROWN }}
+              value={form.songRequest} onChange={set("songRequest")} />
+          </label>
         </Reveal>
 
         <Reveal delay={0.2}>
@@ -2220,8 +2433,8 @@ function ThankYouContent({ name }: { name: string }) {
 }
 
 /** Whichever the guest hasn't done yet: the RSVP form, or (once submitted) the thank-you screen. */
-function RSVPHubContent({ rsvpName, onSuccess, guestName }: { rsvpName: string | null; onSuccess: (name: string) => void; guestName: string }) {
-  return rsvpName ? <ThankYouContent name={rsvpName} /> : <RSVPContent onSuccess={onSuccess} initialName={guestName} />;
+function RSVPHubContent({ rsvpName, onSuccess, guestName, guest }: { rsvpName: string | null; onSuccess: (name: string) => void; guestName: string; guest: GuestRecord | null }) {
+  return rsvpName ? <ThankYouContent name={rsvpName} /> : <RSVPContent onSuccess={onSuccess} initialName={guestName} guest={guest} />;
 }
 
 // ─── Admin Dashboard ──────────────────────────────────────────────────────────
@@ -2254,6 +2467,8 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
         loveNote: row.love_note,
         phone: row.phone,
         videoUrl: row.video_url ?? null,
+        attendeeCount: row.attendee_count ?? null,
+        songRequest: row.song_request ?? null,
         timestamp: row.created_at,
       })));
     };
@@ -2266,6 +2481,26 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
   }, []);
 
   const notes: { name: string; note: string; id: string }[] = JSON.parse(localStorage.getItem("love_notes") || "[]");
+
+  const [guests, setGuests] = useState<GuestRecord[]>([]);
+  const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
+  useEffect(() => {
+    if (!supabaseReady || !supabase) return;
+    supabase.from("guests").select("*").order("side").order("display_name").then(({ data, error }) => {
+      if (error) { console.error(error); return; }
+      setGuests((data ?? []).map((row) => ({
+        id: row.id, slug: row.slug, displayName: row.display_name, side: row.side, passes: row.passes,
+      })));
+    });
+  }, []);
+
+  const copyGuestLink = (slug: string) => {
+    const url = `${window.location.origin}${window.location.pathname}?g=${slug}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopiedSlug(slug);
+      setTimeout(() => setCopiedSlug(null), 2000);
+    });
+  };
 
   const [videoGreetings, setVideoGreetings] = useState<{ id: string; name: string; videoUrl: string }[]>([]);
   useEffect(() => {
@@ -2382,6 +2617,45 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
           )}
         </div>
 
+        {/* Real guest list with pass counts */}
+        {supabaseReady && guests.length > 0 && (
+          <div className="mb-8 p-5" style={{ background: CREAM, border: `1px solid rgba(196,168,130,0.25)`, borderRadius: 4 }}>
+            <p className="text-[10px] tracking-widest uppercase mb-4" style={{ fontFamily: SANS, color: GOLD }}>
+              Enlaces de invitados ({guests.length})
+            </p>
+            {(["ingrid", "douglas"] as const).map((side) => (
+              <div key={side} className="mb-5 last:mb-0">
+                <p className="text-xs mb-2 tracking-widest uppercase" style={{ fontFamily: SANS, color: TAN }}>
+                  {side === "ingrid" ? "Invitados de Ingrid" : "Invitados de Douglas"}
+                </p>
+                <div className="space-y-1.5">
+                  {guests.filter((g) => g.side === side).map((g) => (
+                    <div key={g.id} className="flex items-center justify-between gap-3 px-3 py-2"
+                      style={{ background: "#FAF8F3", border: `1px solid rgba(196,168,130,0.18)`, borderRadius: 2 }}>
+                      <div className="min-w-0">
+                        <p className="text-sm truncate" style={{ fontFamily: SANS, color: BROWN }}>{g.displayName}</p>
+                        <p className="text-[10px]" style={{ fontFamily: SANS, color: TAN }}>{g.passes} {g.passes === 1 ? "pase" : "pases"}</p>
+                      </div>
+                      <button
+                        onClick={() => copyGuestLink(g.slug)}
+                        className="flex-shrink-0 px-3 py-1.5 text-[10px] tracking-widest uppercase transition-all"
+                        style={{
+                          fontFamily: SANS,
+                          background: copiedSlug === g.slug ? "rgba(196,168,130,0.25)" : `linear-gradient(135deg, ${GOLD}, ${GOLD_DARK})`,
+                          color: copiedSlug === g.slug ? BROWN : CREAM,
+                          borderRadius: 2,
+                        }}
+                      >
+                        {copiedSlug === g.slug ? "¡Copiado!" : "Copiar"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-8">
           {[
@@ -2435,7 +2709,7 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: CREAM, borderBottom: `1px solid rgba(196,168,130,0.2)` }}>
-                  {["Nombre", "Estado", "Teléfono", "Alimentación", "Mensaje", "Video"].map((h) => (
+                  {["Nombre", "Estado", "Pases", "Teléfono", "Alimentación", "Canción", "Mensaje", "Video"].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-[10px] tracking-widest uppercase"
                       style={{ fontFamily: SANS, color: GOLD }}>{h}</th>
                   ))}
@@ -2455,8 +2729,12 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
                         {e.attending ? "Asiste" : "No asiste"}
                       </span>
                     </td>
+                    <td className="px-4 py-3" style={{ fontFamily: SANS, color: TAN }}>{e.attendeeCount ?? "—"}</td>
                     <td className="px-4 py-3" style={{ fontFamily: SANS, color: TAN }}>{e.phone || "—"}</td>
                     <td className="px-4 py-3" style={{ fontFamily: SANS, color: TAN }}>{e.dietary || "—"}</td>
+                    <td className="px-4 py-3 max-w-[140px]" style={{ fontFamily: SANS, color: TAN }}>
+                      <span className="block truncate">{e.songRequest || "—"}</span>
+                    </td>
                     <td className="px-4 py-3 max-w-xs" style={{ fontFamily: SANS, color: TAN }}>
                       <span className="block truncate">{e.loveNote || "—"}</span>
                     </td>
@@ -2691,13 +2969,37 @@ export default function App() {
   const [admin, setAdmin]       = useState(false);
   const [rsvpName, setRsvpName] = useState<string | null>(null);
   const [guestName, setGuestName] = useState<string>("");
+  const [guest, setGuest] = useState<GuestRecord | null>(null);
   const music = useBackgroundMusic();
 
-  // Personalizes the invitation from a link like tusitio.com/?to=Maria
+  // Personaliza la invitación desde un link como tusitio.com/?g=natalia-sneider
+  // (grupo real con pases, tomado de Supabase) o, si no hay grupo, el legado
+  // tusitio.com/?to=Maria (solo un nombre en texto, sin pases).
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const groupSlug = params.get("g");
     const toParam = params.get("to");
+
     if (toParam) setGuestName(decodeURIComponent(toParam));
+
+    if (groupSlug && supabaseReady && supabase) {
+      supabase
+        .from("guests")
+        .select("*")
+        .eq("slug", groupSlug)
+        .single()
+        .then(({ data, error }) => {
+          if (error || !data) { console.error(error); return; }
+          setGuest({
+            id: data.id,
+            slug: data.slug,
+            displayName: data.display_name,
+            side: data.side,
+            passes: data.passes,
+          });
+          setGuestName(data.display_name);
+        });
+    }
   }, []);
 
   return (
@@ -2723,7 +3025,7 @@ export default function App() {
             <VerseBanner />
             <CountdownSection />
             <VideoSection />
-            <MoreDetailsHub rsvpName={rsvpName} onRsvpSuccess={setRsvpName} guestName={guestName} />
+            <MoreDetailsHub rsvpName={rsvpName} onRsvpSuccess={setRsvpName} guestName={guestName} guest={guest} />
             <NosotrosSection />
             <MapSection />
             <Footer onAdminClick={() => setAdmin(true)} />
