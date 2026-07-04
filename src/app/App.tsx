@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
 import {
   MapPin, Clock, Calendar, VolumeX, Volume2, Minus, Plus,
@@ -256,6 +257,33 @@ function CoupleSeal({ size = 44 }: { size?: number }) {
   );
 }
 
+/** Pantalla mínima y elegante mientras se resuelve la personalización del
+ *  link (?g=slug) contra Supabase — evita cualquier parpadeo de pantalla en
+ *  blanco o de texto genérico antes de mostrar el nombre real del invitado. */
+function PreparingInvitationScreen() {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center"
+      style={{ background: "linear-gradient(135deg, #F5EBD9 0%, #FAF6EE 35%, #FFF9F0 65%, #F2EBE0 100%)" }}
+    >
+      <motion.div
+        animate={{ scale: [1, 1.06, 1], opacity: [0.9, 1, 0.9] }}
+        transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
+      >
+        <CoupleSeal size={52} />
+      </motion.div>
+      <motion.p
+        initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3, duration: 0.8 }}
+        className="mt-6 text-[11px] tracking-[0.4em] uppercase"
+        style={{ fontFamily: SANS, color: "rgba(140,110,70,0.75)" }}
+      >
+        Preparando tu invitación…
+      </motion.p>
+    </div>
+  );
+}
+
 function SectionLabel({ children }: { children: string }) {
   return (
     <p className="tracking-[0.5em] text-[10px] uppercase mb-3" style={{ fontFamily: SANS, color: GOLD, fontWeight: 500 }}>
@@ -275,15 +303,21 @@ function SectionTitle({ children, italic = true }: { children: React.ReactNode; 
 /** All the "extra" sections collapsed behind circular buttons, 2 per row, so the
  *  page stays short — tapping a circle expands just that section beneath the grid. */
 function MoreDetailsHub({ rsvpName, onRsvpSuccess, guestName, guest }: { rsvpName: string | null; onRsvpSuccess: (name: string) => void; guestName: string; guest: GuestRecord | null }) {
-  const RSVPItemContent = () => <RSVPHubContent rsvpName={rsvpName} onSuccess={onRsvpSuccess} guestName={guestName} guest={guest} />;
-
+  // Nota: cada `content` es un elemento ya construido (no una referencia a
+  // función). Esto es importante para RSVPHubContent — si en cambio se
+  // envolviera en una función flecha nueva en cada render (como antes), React
+  // vería un "componente distinto" cada vez que rsvpName cambia y desmontaría
+  // RSVPHubContent justo cuando necesitábamos que abriera el modal de video,
+  // perdiendo su estado. Con un elemento JSX, el `type` (RSVPHubContent) sigue
+  // siendo la misma función de siempre, así que React preserva su estado.
   const items = [
-    { key: "itinerario", icon: Clock,    label: "Itinerario",           title: "Itinerario del día",  Content: TimelineContent,  featured: false },
-    { key: "vestuario",  icon: Shirt,    label: "Código de Vestuario",  title: "Nuestro Estilo",       Content: DressCodeContent, featured: false },
-    { key: "historia",   icon: BookOpen, label: "Nuestra Historia",     title: "Nuestra Historia",     Content: OurStoryContent,  featured: false },
-    { key: "notas",      icon: PenLine,  label: "Nota de Amor",         title: "Déjanos tu nota",      Content: LoveNotesContent, featured: false },
-    { key: "regalos",    icon: Gift,     label: "Mesa de Regalos",      title: "Mesa de Regalos",      Content: GiftsContent,     featured: false },
-    { key: "rsvp",       icon: Check,    label: "Confirmar Asistencia", title: rsvpName ? "¡Gracias!" : "Confirmar Asistencia", Content: RSVPItemContent, featured: true },
+    { key: "itinerario", icon: Clock,    label: "Itinerario",           title: "Itinerario del día",  content: <TimelineContent />,  featured: false },
+    { key: "vestuario",  icon: Shirt,    label: "Código de Vestuario",  title: "Nuestro Estilo",       content: <DressCodeContent />, featured: false },
+    { key: "historia",   icon: BookOpen, label: "Nuestra Historia",     title: "Nuestra Historia",     content: <OurStoryContent />,  featured: false },
+    { key: "notas",      icon: PenLine,  label: "Nota de Amor",         title: "Déjanos tu nota",      content: <LoveNotesContent />, featured: false },
+    { key: "regalos",    icon: Gift,     label: "Mesa de Regalos",      title: "Mesa de Regalos",      content: <GiftsContent />,     featured: false },
+    { key: "rsvp",       icon: Check,    label: "Confirmar Asistencia", title: rsvpName ? "¡Gracias!" : "Confirmar Asistencia",
+      content: <RSVPHubContent rsvpName={rsvpName} onSuccess={onRsvpSuccess} guestName={guestName} guest={guest} />, featured: true },
   ] as const;
 
   const [open, setOpen] = useState<string | null>(null);
@@ -362,7 +396,7 @@ function MoreDetailsHub({ rsvpName, onRsvpSuccess, guestName, guest }: { rsvpNam
                   <active.icon style={{ width: 18, height: 18, color: CREAM }} />
                 </div>
                 <h2 className="text-3xl mb-8" style={{ fontFamily: SCRIPT, color: "#5C4A32" }}>{active.title}</h2>
-                <active.Content />
+                {active.content}
               </div>
             </motion.div>
           </motion.div>
@@ -568,8 +602,8 @@ function EnvelopeScreen({ onOpen, startMusic, guestName }: { onOpen: () => void;
         <p className="tracking-[0.55em] text-[9px] uppercase mb-2" style={{ fontFamily: SANS, color: "rgba(156,130,100,0.8)" }}>
           Una invitación especial
         </p>
-        <p className="leading-none" style={{ fontFamily: SCRIPT, color: "#8A7654", fontSize: 30 }}>
-          para {guestName || "ti"}
+        <p className="leading-tight max-w-[300px] mx-auto px-4" style={{ fontFamily: SCRIPT, color: "#8A7654", fontSize: guestName ? 28 : 30 }}>
+          {guestName ? `para: ${guestName}` : "para ti"}
         </p>
       </motion.div>
 
@@ -1859,78 +1893,252 @@ function GuestMediaContent() {
 
 /** A lightweight, optional way for any guest to leave a short video greeting —
  *  decoupled from the formal RSVP, stored in its own collection. */
-function VideoGreetingCard() {
-  const [name, setName] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [sent, setSent] = useState(false);
+/** Se abre automáticamente justo después de confirmar asistencia. Graba en vivo
+ *  con la cámara del invitado (getUserMedia + MediaRecorder) y el video queda
+ *  guardado como un video más de la galería, en la carpeta "Invitados". */
+function VideoGreetingModal({ open, onClose, guestName }: { open: boolean; onClose: () => void; guestName: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!file || !supabase) return;
-    setUploading(true);
+  const [name, setName] = useState(guestName);
+  const [phase, setPhase] = useState<"idle" | "requesting" | "recording" | "preview" | "uploading" | "done" | "error">("idle");
+  const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
+  const [recordedUrl, setRecordedUrl] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState("");
+
+  useEffect(() => { setName(guestName); }, [guestName]);
+  useBodyScrollLock(open);
+
+  const stopStream = () => {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+  };
+
+  // Reset to a clean, camera-off state every time the modal (re)opens — no
+  // permission is requested here. Nada pasa hasta que el invitado decida.
+  useEffect(() => {
+    if (!open) { stopStream(); return; }
+    setPhase("idle");
+    setRecordedBlob(null);
+    setRecordedUrl(null);
+    setErrorMsg("");
+    return () => stopStream();
+  }, [open]);
+
+  // Se llama SIEMPRE directo desde el clic de "Grabar" — nunca desde un
+  // useEffect — para que el navegador (Safari en particular) reconozca el
+  // pedido de cámara/micrófono como una acción real del invitado y no lo
+  // bloquee silenciosamente.
+  const handleRecordTap = async () => {
+    setPhase("requesting");
     try {
-      const path = `${crypto.randomUUID()}-${file.name}`;
-      const { error: uploadError } = await supabase.storage.from(VIDEO_GREETINGS_BUCKET).upload(path, file);
-      if (uploadError) throw uploadError;
-      const { data: urlData } = supabase.storage.from(VIDEO_GREETINGS_BUCKET).getPublicUrl(path);
-      const { error: insertError } = await supabase.from("video_greetings").insert({
-        name: name.trim() || "Invitado",
-        video_url: urlData.publicUrl,
-      });
-      if (insertError) throw insertError;
-      setFile(null);
-      setSent(true);
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: true });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play().catch(() => {});
+      }
+
+      chunksRef.current = [];
+      const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
+        ? "video/webm;codecs=vp9,opus"
+        : MediaRecorder.isTypeSupported("video/webm")
+        ? "video/webm"
+        : "video/mp4";
+      const recorder = new MediaRecorder(stream, { mimeType });
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      recorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: mimeType });
+        setRecordedBlob(blob);
+        setRecordedUrl(URL.createObjectURL(blob));
+        setPhase("preview");
+      };
+      recorder.start();
+      recorderRef.current = recorder;
+      setPhase("recording");
     } catch (err) {
       console.error(err);
-    } finally {
-      setUploading(false);
+      setErrorMsg("No pudimos acceder a tu cámara. Revisa los permisos del navegador, o simplemente omite este paso — tu confirmación ya quedó guardada.");
+      setPhase("error");
     }
   };
 
-  if (!supabaseReady) return null;
+  const stopRecording = () => recorderRef.current?.stop();
 
-  return (
-    <div className="mt-16 p-6 max-w-md mx-auto text-center" style={{ background: "rgba(196,168,130,0.08)", border: `1px dashed rgba(196,168,130,0.35)`, borderRadius: 6 }}>
-      <Video style={{ width: 20, height: 20, color: GOLD, margin: "0 auto 10px" }} />
-      <p className="mb-1" style={{ fontFamily: SCRIPT, color: "#5C4A32", fontSize: 20 }}>
-        ¿Nos acompañarás? Cuéntanoslo en video
-      </p>
-      <p className="text-xs mb-5" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
-        Totalmente opcional — un saludo o un "sí, ahí estaré" en video nos haría muy felices.
-      </p>
+  const retake = () => {
+    if (recordedUrl) URL.revokeObjectURL(recordedUrl);
+    setRecordedBlob(null);
+    setRecordedUrl(null);
+    stopStream();
+    setPhase("idle");
+  };
 
-      {sent ? (
-        <p className="text-sm" style={{ fontFamily: SANS, color: "#8A6A3A" }}>¡Gracias por tu video! 🤍</p>
-      ) : (
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <input
-            type="text" placeholder="Tu nombre"
-            className="w-full px-0 py-2 bg-transparent border-b text-sm outline-none text-center"
-            style={{ fontFamily: SANS, color: BROWN, borderBottomColor: "rgba(196,168,130,0.4)" }}
-            value={name} onChange={(e) => setName(e.target.value)}
-          />
-          <label className="flex items-center gap-3 px-4 py-3 cursor-pointer" style={{ border: `1px dashed rgba(196,168,130,0.45)`, borderRadius: 4 }}>
-            <Video style={{ width: 16, height: 16, color: GOLD, flexShrink: 0 }} />
-            <span className="text-xs truncate" style={{ fontFamily: SANS, color: file ? BROWN : TAN }}>
-              {file ? file.name : "Graba o sube tu video"}
-            </span>
-            <input type="file" accept="video/*" capture="user" className="hidden"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-          </label>
-          <GoldButton type="submit" disabled={!file || uploading} className="w-full py-2.5">
-            {uploading
-              ? <div className="w-4 h-4 border-2 border-white/25 border-t-white rounded-full animate-spin" />
-              : <><Video style={{ width: 13, height: 13 }} /> Enviar video</>}
-          </GoldButton>
-        </form>
-      )}
-    </div>
+  const handleUpload = async () => {
+    if (!recordedBlob || !supabase) return;
+    setPhase("uploading");
+    try {
+      const ext = recordedBlob.type.includes("mp4") ? "mp4" : "webm";
+      const path = `Invitados/${crypto.randomUUID()}.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from(GUEST_MEDIA_BUCKET)
+        .upload(path, recordedBlob, { contentType: recordedBlob.type });
+      if (uploadError) throw uploadError;
+      const { data: urlData } = supabase.storage.from(GUEST_MEDIA_BUCKET).getPublicUrl(path);
+      const { error: insertError } = await supabase.from("guest_media").insert({
+        name: name.trim() || "Invitado",
+        folder: "Invitados",
+        url: urlData.publicUrl,
+        type: "video",
+        likes: 0,
+      });
+      if (insertError) throw insertError;
+      stopStream();
+      setPhase("done");
+    } catch (err) {
+      console.error(err);
+      setErrorMsg("No pudimos subir tu video. Intenta de nuevo.");
+      setPhase("error");
+    }
+  };
+
+  if (!open) return null;
+
+  // Portal: este modal debe cubrir toda la pantalla sin importar dónde viva en
+  // el árbol de React. Si se renderizara anidado dentro del modal del Hub
+  // (que anima con Framer Motion vía `scale`/`y`, es decir con un `transform`
+  // CSS activo), ese ancestro se convertiría en el "contenedor" de cualquier
+  // `position: fixed` interno — el modal de video quedaría atrapado y
+  // recortado ahí adentro en vez de cubrir el viewport real. El portal lo
+  // saca directo a document.body, evitando ese problema por completo.
+  return createPortal(
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[90] flex items-center justify-center p-4"
+        style={{ background: "rgba(20,14,6,0.88)" }}
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ opacity: 0, scale: 0.94, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }}
+          transition={{ duration: 0.3 }}
+          onClick={(e) => e.stopPropagation()}
+          className="relative w-full max-w-sm max-h-[92vh] overflow-y-auto rounded-lg"
+          style={{ background: "#FFFBF2" }}
+        >
+          <button
+            onClick={onClose}
+            aria-label="Cerrar"
+            className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.45)" }}
+          >
+            <X style={{ width: 16, height: 16, color: CREAM }} />
+          </button>
+
+          <div className="p-6 text-center">
+            <p className="text-[10px] tracking-[0.35em] uppercase mb-1" style={{ fontFamily: SANS, color: GOLD }}>
+              ¡Gracias por confirmar!
+            </p>
+            <h3 className="text-2xl mb-4" style={{ fontFamily: SCRIPT, color: "#5C4A32" }}>
+              Déjanos un recuerdo en video
+            </h3>
+
+            {phase !== "done" ? (
+              <>
+                <div className="relative rounded-lg overflow-hidden mb-4" style={{ aspectRatio: "3/4", background: "#1a1208" }}>
+                  {phase === "preview" && recordedUrl ? (
+                    <video src={recordedUrl} controls autoPlay playsInline className="w-full h-full object-cover" />
+                  ) : (
+                    <video ref={videoRef} muted autoPlay playsInline className="w-full h-full object-cover" style={{ transform: "scaleX(-1)" }} />
+                  )}
+                  {(phase === "idle" || phase === "requesting" || phase === "error") && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none">
+                      <Video style={{ width: 28, height: 28, color: "rgba(255,255,255,0.35)" }} />
+                      {phase === "requesting" && (
+                        <span className="text-[10px] tracking-widest uppercase" style={{ fontFamily: SANS, color: "rgba(255,255,255,0.6)" }}>
+                          Solicitando permiso…
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {phase === "recording" && (
+                    <div className="absolute top-3 left-3 flex items-center gap-2 px-2 py-1 rounded-full" style={{ background: "rgba(0,0,0,0.5)" }}>
+                      <motion.div className="w-2 h-2 rounded-full" style={{ background: "#e05252" }}
+                        animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1, repeat: Infinity }} />
+                      <span className="text-[10px] tracking-widest uppercase" style={{ fontFamily: SANS, color: CREAM }}>Grabando</span>
+                    </div>
+                  )}
+                </div>
+
+                {phase !== "error" && (
+                  <input
+                    type="text" placeholder="Tu nombre"
+                    className="w-full px-0 py-2 mb-4 bg-transparent border-b text-sm outline-none text-center"
+                    style={{ fontFamily: SANS, color: BROWN, borderBottomColor: "rgba(196,168,130,0.4)" }}
+                    value={name} onChange={(e) => setName(e.target.value)}
+                  />
+                )}
+
+                {phase === "error" && (
+                  <p className="text-xs mb-4" style={{ fontFamily: SANS, color: "#9C5A3A" }}>{errorMsg}</p>
+                )}
+
+                {(phase === "idle" || phase === "error") && (
+                  <GoldButton onClick={handleRecordTap} className="w-full py-3">
+                    <Video style={{ width: 14, height: 14 }} /> Grabar
+                  </GoldButton>
+                )}
+                {phase === "requesting" && (
+                  <GoldButton disabled className="w-full py-3">
+                    <div className="w-4 h-4 border-2 border-white/25 border-t-white rounded-full animate-spin" />
+                  </GoldButton>
+                )}
+                {phase === "recording" && (
+                  <GoldButton onClick={stopRecording} className="w-full py-3">
+                    Detener grabación
+                  </GoldButton>
+                )}
+                {phase === "preview" && (
+                  <div className="flex gap-3">
+                    <button type="button" onClick={retake}
+                      className="flex-1 py-3 text-xs tracking-widest uppercase"
+                      style={{ fontFamily: SANS, color: TAN, border: `1px solid rgba(196,168,130,0.35)`, borderRadius: 2 }}>
+                      Regrabar
+                    </button>
+                    <GoldButton onClick={handleUpload} className="flex-1 py-3">
+                      <Send style={{ width: 13, height: 13 }} /> Enviar video
+                    </GoldButton>
+                  </div>
+                )}
+                {phase === "uploading" && (
+                  <GoldButton disabled className="w-full py-3">
+                    <div className="w-4 h-4 border-2 border-white/25 border-t-white rounded-full animate-spin" />
+                  </GoldButton>
+                )}
+
+                <button onClick={onClose} className="w-full text-center text-xs mt-4" style={{ fontFamily: SANS, color: "rgba(156,130,114,0.7)" }}>
+                  {phase === "idle" || phase === "error" ? "Omitir — mi asistencia ya quedó confirmada" : "Omitir por ahora"}
+                </button>
+              </>
+            ) : (
+              <div className="py-6">
+                <Heart style={{ width: 32, height: 32, fill: GOLD, color: GOLD, margin: "0 auto 14px" }} />
+                <p className="text-sm mb-6" style={{ fontFamily: SANS, color: TAN }}>
+                  ¡Gracias por tu recuerdo! Ya está en nuestra galería. 🤍
+                </p>
+                <GoldButton onClick={onClose} className="w-full py-3">Cerrar</GoldButton>
+              </div>
+            )}
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>,
+    document.body
   );
 }
 
-/** "Nosotros" — the curated gallery, guest uploads, and the optional video
- *  greeting all live together as one always-visible section (not behind a circle). */
+/** "Nosotros" — the curated gallery and guest uploads, always visible (not behind a circle). */
 function NosotrosSection() {
   return (
     <section className="py-20 px-6" style={{ background: "linear-gradient(160deg, #FAF8F3 0%, #F2EDE3 100%)" }}>
@@ -1954,8 +2162,6 @@ function NosotrosSection() {
         </div>
       </Reveal>
       <GuestMediaContent />
-
-      <VideoGreetingCard />
     </section>
   );
 }
@@ -2434,7 +2640,21 @@ function ThankYouContent({ name }: { name: string }) {
 
 /** Whichever the guest hasn't done yet: the RSVP form, or (once submitted) the thank-you screen. */
 function RSVPHubContent({ rsvpName, onSuccess, guestName, guest }: { rsvpName: string | null; onSuccess: (name: string) => void; guestName: string; guest: GuestRecord | null }) {
-  return rsvpName ? <ThankYouContent name={rsvpName} /> : <RSVPContent onSuccess={onSuccess} initialName={guestName} guest={guest} />;
+  const [videoModalOpen, setVideoModalOpen] = useState(false);
+  const [confirmedName, setConfirmedName] = useState("");
+
+  const handleSuccess = (name: string) => {
+    onSuccess(name);
+    setConfirmedName(name);
+    setVideoModalOpen(true);
+  };
+
+  return (
+    <>
+      {rsvpName ? <ThankYouContent name={rsvpName} /> : <RSVPContent onSuccess={handleSuccess} initialName={guestName} guest={guest} />}
+      <VideoGreetingModal open={videoModalOpen} onClose={() => setVideoModalOpen(false)} guestName={confirmedName} />
+    </>
+  );
 }
 
 // ─── Admin Dashboard ──────────────────────────────────────────────────────────
@@ -2970,6 +3190,11 @@ export default function App() {
   const [rsvpName, setRsvpName] = useState<string | null>(null);
   const [guestName, setGuestName] = useState<string>("");
   const [guest, setGuest] = useState<GuestRecord | null>(null);
+  // Solo mostramos el loader de personalización si el link trae ?g=... — un
+  // link plano (o ?to=Nombre) entra directo, sin espera de red de por medio.
+  const [guestLoading, setGuestLoading] = useState<boolean>(
+    () => new URLSearchParams(window.location.search).get("g") !== null
+  );
   const music = useBackgroundMusic();
 
   // Personaliza la invitación desde un link como tusitio.com/?g=natalia-sneider
@@ -2977,30 +3202,55 @@ export default function App() {
   // tusitio.com/?to=Maria (solo un nombre en texto, sin pases).
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const groupSlug = params.get("g");
+    // Normalizamos el slug (espacios y mayúsculas) para que un link nunca
+    // falle por una diferencia invisible entre la URL y lo guardado en Supabase.
+    const groupSlug = params.get("g")?.trim().toLowerCase() || null;
     const toParam = params.get("to");
 
     if (toParam) setGuestName(decodeURIComponent(toParam));
 
-    if (groupSlug && supabaseReady && supabase) {
-      supabase
-        .from("guests")
-        .select("*")
-        .eq("slug", groupSlug)
-        .single()
-        .then(({ data, error }) => {
-          if (error || !data) { console.error(error); return; }
-          setGuest({
-            id: data.id,
-            slug: data.slug,
-            displayName: data.display_name,
-            side: data.side,
-            passes: data.passes,
-          });
-          setGuestName(data.display_name);
-        });
+    if (!groupSlug) return;
+
+    if (!supabaseReady || !supabase) {
+      // Sin backend configurado — no hay nada que esperar, seguimos con la
+      // invitación genérica en vez de dejar al invitado colgado.
+      setGuestLoading(false);
+      return;
     }
+
+    // Resiliencia: si Supabase no responde en 4s (red lenta/caída), no dejamos
+    // al invitado mirando un loader para siempre — pasamos a la invitación
+    // genérica de todas formas.
+    const safetyTimeout = window.setTimeout(() => setGuestLoading(false), 4000);
+
+    supabase
+      .from("guests")
+      .select("*")
+      .ilike("slug", groupSlug) // sin comodines: comparación exacta pero insensible a mayúsculas
+      .single()
+      .then(({ data, error }) => {
+        if (error || !data) {
+          // Slug inexistente o error de red: cae con elegancia a la invitación
+          // general, sin romper nada.
+          console.error(error);
+          return;
+        }
+        setGuest({
+          id: data.id,
+          slug: data.slug,
+          displayName: data.display_name,
+          side: data.side,
+          passes: data.passes,
+        });
+        setGuestName(data.display_name);
+      })
+      .finally(() => {
+        window.clearTimeout(safetyTimeout);
+        setGuestLoading(false);
+      });
   }, []);
+
+  if (guestLoading) return <PreparingInvitationScreen />;
 
   return (
     <>
