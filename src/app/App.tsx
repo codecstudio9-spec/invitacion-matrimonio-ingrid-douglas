@@ -14,6 +14,7 @@ import { supabase, supabaseReady, GUEST_MEDIA_BUCKET, VIDEO_GREETINGS_BUCKET } f
 
 interface RSVPEntry {
   id: string;
+  guestId: string | null;
   name: string;
   attending: boolean;
   dietary: string;
@@ -27,6 +28,7 @@ interface RSVPEntry {
 
 interface GuestMediaItem {
   id: string;
+  guestId: string | null;
   name: string;
   folder: string;
   url: string;
@@ -60,6 +62,14 @@ interface GuestMediaComment {
   mediaId: string;
   name: string;
   message: string;
+  timestamp: string;
+}
+
+interface LoveNote {
+  id: string;
+  guestId: string | null;
+  name: string;
+  note: string;
   timestamp: string;
 }
 
@@ -314,7 +324,7 @@ function MoreDetailsHub({ rsvpName, onRsvpSuccess, guestName, guest }: { rsvpNam
     { key: "itinerario", icon: Clock,    label: "Itinerario",           title: "Itinerario del día",  content: <TimelineContent />,  featured: false },
     { key: "vestuario",  icon: Shirt,    label: "Código de Vestuario",  title: "Nuestro Estilo",       content: <DressCodeContent />, featured: false },
     { key: "historia",   icon: BookOpen, label: "Nuestra Historia",     title: "Nuestra Historia",     content: <OurStoryContent />,  featured: false },
-    { key: "notas",      icon: PenLine,  label: "Nota de Amor",         title: "Déjanos tu nota",      content: <LoveNotesContent />, featured: false },
+    { key: "notas",      icon: PenLine,  label: "Nota de Amor",         title: "Déjanos tu nota",      content: <LoveNotesContent guest={guest} />, featured: false },
     { key: "regalos",    icon: Gift,     label: "Mesa de Regalos",      title: "Mesa de Regalos",      content: <GiftsContent />,     featured: false },
     { key: "rsvp",       icon: Check,    label: "Confirmar Asistencia", title: rsvpName ? "¡Gracias!" : "Confirmar Asistencia",
       content: <RSVPHubContent rsvpName={rsvpName} onSuccess={onRsvpSuccess} guestName={guestName} guest={guest} />, featured: true },
@@ -1561,7 +1571,7 @@ const GUEST_MEDIA_DEFAULT_FOLDERS = ["Ceremonia", "Recepción", "Fiesta", "Otros
 
 /** Guest-uploaded photos & videos, organized into folders, shared live via Firebase
  *  so the couple and every guest see the same album regardless of device. */
-function GuestMediaContent() {
+function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
   const [items, setItems] = useState<GuestMediaItem[]>([]);
   const [activeFolder, setActiveFolder] = useState("Todas");
   const [name, setName] = useState("");
@@ -1587,6 +1597,7 @@ function GuestMediaContent() {
       if (error) { console.error(error); return; }
       setItems((data ?? []).map((row) => ({
         id: row.id,
+        guestId: row.guest_id ?? null,
         name: row.name,
         folder: row.folder,
         url: row.url,
@@ -1660,6 +1671,7 @@ function GuestMediaContent() {
         url: urlData.publicUrl,
         type,
         likes: 0,
+        guest_id: guest?.id ?? null,
       });
       if (insertError) throw insertError;
       setFile(null);
@@ -1914,7 +1926,7 @@ function GuestMediaContent() {
 /** Se abre automáticamente justo después de confirmar asistencia. Graba en vivo
  *  con la cámara del invitado (getUserMedia + MediaRecorder) y el video queda
  *  guardado como un video más de la galería, en la carpeta "Invitados". */
-function VideoGreetingModal({ open, onClose, guestName }: { open: boolean; onClose: () => void; guestName: string }) {
+function VideoGreetingModal({ open, onClose, guestName, guest }: { open: boolean; onClose: () => void; guestName: string; guest: GuestRecord | null }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -2010,6 +2022,7 @@ function VideoGreetingModal({ open, onClose, guestName }: { open: boolean; onClo
         url: urlData.publicUrl,
         type: "video",
         likes: 0,
+        guest_id: guest?.id ?? null,
       });
       if (insertError) throw insertError;
       stopStream();
@@ -2157,7 +2170,7 @@ function VideoGreetingModal({ open, onClose, guestName }: { open: boolean; onClo
 }
 
 /** "Nosotros" — the curated gallery and guest uploads, always visible (not behind a circle). */
-function NosotrosSection() {
+function NosotrosSection({ guest }: { guest: GuestRecord | null }) {
   return (
     <section className="py-20 px-6" style={{ background: "linear-gradient(160deg, #FAF8F3 0%, #F2EDE3 100%)" }}>
       <Reveal>
@@ -2179,7 +2192,7 @@ function NosotrosSection() {
           </h3>
         </div>
       </Reveal>
-      <GuestMediaContent />
+      <GuestMediaContent guest={guest} />
     </section>
   );
 }
@@ -2353,100 +2366,155 @@ function GiftsContent() {
 
 // ─── Love Notes ───────────────────────────────────────────────────────────────
 
-function LoveNotesContent() {
-  const [notes, setNotes] = useState<{ name: string; note: string; id: string }[]>(() =>
-    JSON.parse(localStorage.getItem("love_notes") || "[]")
-  );
+function LoveNotesContent({ guest }: { guest: GuestRecord | null }) {
+  const [notes, setNotes] = useState<LoveNote[]>([]);
   const [form, setForm] = useState({ name: "", note: "" });
-  const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [justSent, setJustSent] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Muro en vivo: cualquiera con la invitación abierta ve aparecer notas
+  // nuevas al instante, sin recargar.
+  useEffect(() => {
+    if (!supabaseReady || !supabase) return;
+    const fetchNotes = async () => {
+      const { data, error } = await supabase.from("love_notes").select("*").order("created_at", { ascending: true });
+      if (error) { console.error(error); return; }
+      setNotes((data ?? []).map((row) => ({
+        id: row.id, guestId: row.guest_id, name: row.name, note: row.note, timestamp: row.created_at,
+      })));
+    };
+    fetchNotes();
+    const channel = supabase
+      .channel("love_notes_changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "love_notes" }, fetchNotes)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  // Auto-scroll horizontal — mismo patrón que el carrusel de fotos: se
+  // desliza sola despacio y se pausa mientras el invitado interactúa.
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const interactingRef = useRef(false);
+  const resumeTimeoutRef = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    let raf: number;
+    const step = () => {
+      const el = scrollerRef.current;
+      if (el && !interactingRef.current && el.scrollWidth > el.clientWidth + 4) {
+        el.scrollLeft += 0.4;
+        const max = el.scrollWidth - el.clientWidth;
+        if (el.scrollLeft >= max) el.scrollLeft = 0;
+      }
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  const pauseAutoScroll = () => {
+    interactingRef.current = true;
+    window.clearTimeout(resumeTimeoutRef.current);
+  };
+  const scheduleResume = () => {
+    window.clearTimeout(resumeTimeoutRef.current);
+    resumeTimeoutRef.current = window.setTimeout(() => { interactingRef.current = false; }, 2200);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim() || !form.note.trim()) return;
     setLoading(true);
-    const entry = { id: crypto.randomUUID(), name: form.name.trim(), note: form.note.trim() };
-    const updated = [...notes, entry];
-    localStorage.setItem("love_notes", JSON.stringify(updated));
-    setTimeout(() => {
-      setNotes(updated);
-      setSubmitted(true);
+    try {
+      if (supabaseReady && supabase) {
+        const { error } = await supabase.from("love_notes").insert({
+          guest_id: guest?.id ?? null,
+          name: form.name.trim(),
+          note: form.note.trim(),
+        });
+        if (error) throw error;
+      }
+      setForm({ name: "", note: "" });
+      setJustSent(true);
+      setTimeout(() => setJustSent(false), 4000);
+    } catch (err) {
+      console.error(err);
+    } finally {
       setLoading(false);
-    }, 1200);
+    }
   };
+
+  const cardBg = (i: number) => (i % 3 === 0 ? "#FAF6EE" : i % 3 === 1 ? "#F5EFE2" : "#F0EBD8");
 
   return (
     <div className="max-w-2xl mx-auto">
-          <Ornament />
-          <p className="text-sm leading-relaxed max-w-sm mx-auto mt-6 mb-12 text-center" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
-            Déjanos una nota de tu corazón. La leeremos en nuestro matrimonio y guardaremos para siempre.
-          </p>
+      <Ornament />
+      <p className="text-sm leading-relaxed max-w-sm mx-auto mt-6 mb-10 text-center" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
+        Déjanos una nota de tu corazón. La leeremos en nuestro matrimonio y guardaremos para siempre.
+      </p>
 
-        {/* Notes display */}
-        {notes.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-12">
-            {notes.map((n, i) => (
-              <Reveal key={n.id} delay={i * 0.06}>
-                <div className="p-5 relative" style={{
-                  background: i % 3 === 0 ? "#FAF6EE" : i % 3 === 1 ? "#F5EFE2" : "#F0EBD8",
-                  border: `1px solid rgba(196,168,130,0.22)`,
-                  borderRadius: 2,
-                  boxShadow: "0 2px 12px rgba(0,0,0,0.04)",
-                }}>
-                  <PenLine style={{ width: 14, height: 14, color: GOLD, position: "absolute", top: 14, right: 14 }} />
-                  <p className="text-sm leading-relaxed mb-3" style={{ fontFamily: SERIF, color: BROWN, fontStyle: "italic" }}>
-                    "{n.note}"
-                  </p>
-                  <p className="text-[10px] tracking-widest uppercase" style={{ fontFamily: SANS, color: GOLD }}>
-                    — {n.name}
-                  </p>
-                </div>
-              </Reveal>
-            ))}
-          </div>
-        )}
+      {/* Muro de notas — de izquierda a derecha; si no caben, se desliza sola */}
+      {notes.length > 0 && (
+        <div
+          ref={scrollerRef}
+          className="gallery-scroller flex gap-4 overflow-x-auto pb-2 mb-10"
+          style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}
+          onMouseEnter={pauseAutoScroll}
+          onMouseLeave={scheduleResume}
+          onTouchStart={pauseAutoScroll}
+          onTouchEnd={scheduleResume}
+        >
+          {notes.map((n, i) => (
+            <div key={n.id} className="flex-shrink-0 p-5 relative" style={{
+              width: 220,
+              background: cardBg(i),
+              border: `1px solid rgba(196,168,130,0.22)`,
+              borderRadius: 2,
+              boxShadow: "0 2px 12px rgba(0,0,0,0.04)",
+            }}>
+              <PenLine style={{ width: 14, height: 14, color: GOLD, position: "absolute", top: 14, right: 14 }} />
+              <p className="text-sm leading-relaxed mb-3" style={{ fontFamily: SERIF, color: BROWN, fontStyle: "italic" }}>
+                "{n.note}"
+              </p>
+              <p className="text-[10px] tracking-widest uppercase" style={{ fontFamily: SANS, color: GOLD }}>
+                — {n.name}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
 
-        {/* Form */}
-        {!submitted ? (
-          <Reveal delay={0.15}>
-            <form onSubmit={handleSubmit} className="max-w-md mx-auto space-y-5">
-              <input
-                type="text" placeholder="Tu nombre" required
-                className="w-full px-0 py-3 bg-transparent border-b text-sm outline-none"
-                style={{ fontFamily: SANS, color: BROWN, borderBottomColor: "rgba(196,168,130,0.4)", borderBottomStyle: "solid", borderBottomWidth: 1 }}
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              />
-              <textarea
-                placeholder="Escribe tu nota de amor o deseo para los novios…"
-                rows={4} required
-                className="w-full px-0 py-3 bg-transparent border-b text-sm outline-none resize-none"
-                style={{ fontFamily: SANS, color: BROWN, borderBottomColor: "rgba(196,168,130,0.4)", borderBottomStyle: "solid", borderBottomWidth: 1 }}
-                value={form.note}
-                onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
-              />
-              <GoldButton type="submit" disabled={loading} className="w-full py-4">
-                {loading
-                  ? <div className="w-4 h-4 border-2 border-white/25 border-t-white rounded-full animate-spin" />
-                  : <><Heart style={{ width: 14, height: 14 }} /> Enviar mi nota</>
-                }
-              </GoldButton>
-            </form>
-          </Reveal>
-        ) : (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="max-w-md mx-auto text-center py-8"
-          >
-            <p className="text-2xl mb-3" style={{ fontFamily: SCRIPT, color: "#8A6A3A" }}>
-              ¡Gracias por tu nota!
+      {/* Form — siempre disponible, el muro se actualiza solo al enviar */}
+      <Reveal delay={0.15}>
+        <form onSubmit={handleSubmit} className="max-w-md mx-auto space-y-5">
+          <input
+            type="text" placeholder="Tu nombre" required
+            className="w-full px-0 py-3 bg-transparent border-b text-sm outline-none"
+            style={{ fontFamily: SANS, color: BROWN, borderBottomColor: "rgba(196,168,130,0.4)", borderBottomStyle: "solid", borderBottomWidth: 1 }}
+            value={form.name}
+            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+          />
+          <textarea
+            placeholder="Escribe tu nota de amor o deseo para los novios…"
+            rows={4} required
+            className="w-full px-0 py-3 bg-transparent border-b text-sm outline-none resize-none"
+            style={{ fontFamily: SANS, color: BROWN, borderBottomColor: "rgba(196,168,130,0.4)", borderBottomStyle: "solid", borderBottomWidth: 1 }}
+            value={form.note}
+            onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
+          />
+          <GoldButton type="submit" disabled={loading} className="w-full py-4">
+            {loading
+              ? <div className="w-4 h-4 border-2 border-white/25 border-t-white rounded-full animate-spin" />
+              : <><Heart style={{ width: 14, height: 14 }} /> Enviar mi nota</>
+            }
+          </GoldButton>
+          {justSent && (
+            <p className="text-center text-xs" style={{ fontFamily: SANS, color: "#8A6A3A" }}>
+              ¡Gracias por tu nota! Ya está en el muro. 🤍
             </p>
-            <p className="text-sm" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
-              La leeremos con mucho amor en nuestro matrimonio. 🤍
-            </p>
-          </motion.div>
-        )}
+          )}
+        </form>
+      </Reveal>
     </div>
   );
 }
@@ -2500,6 +2568,7 @@ function RSVPContent({ onSuccess, initialName = "", guest }: { onSuccess: (name:
       try {
         const entry: RSVPEntry = {
           id: crypto.randomUUID(),
+          guestId: guest?.id ?? null,
           name: form.name,
           attending: form.attending === "yes",
           dietary: form.dietary,
@@ -2687,7 +2756,7 @@ function RSVPHubContent({ rsvpName, onSuccess, guestName, guest }: { rsvpName: s
   return (
     <>
       {rsvpName ? <ThankYouContent name={rsvpName} /> : <RSVPContent onSuccess={handleSuccess} initialName={guestName} guest={guest} />}
-      <VideoGreetingModal open={videoModalOpen} onClose={() => setVideoModalOpen(false)} guestName={confirmedName} />
+      <VideoGreetingModal open={videoModalOpen} onClose={() => setVideoModalOpen(false)} guestName={confirmedName} guest={guest} />
     </>
   );
 }
@@ -2716,6 +2785,7 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
       if (error) { console.error(error); return; }
       setEntries((data ?? []).map((row) => ({
         id: row.id,
+        guestId: row.guest_id ?? null,
         name: row.name,
         attending: row.attending,
         dietary: row.dietary,
@@ -2735,10 +2805,49 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  const notes: { name: string; note: string; id: string }[] = JSON.parse(localStorage.getItem("love_notes") || "[]");
+  // Notas de amor — en tiempo real desde Supabase (antes vivían solo en
+  // localStorage, por eso nunca se veían entre dispositivos).
+  const [notes, setNotes] = useState<LoveNote[]>([]);
+  useEffect(() => {
+    if (!supabaseReady || !supabase) return;
+    const fetchNotes = async () => {
+      const { data, error } = await supabase.from("love_notes").select("*").order("created_at", { ascending: false });
+      if (error) { console.error(error); return; }
+      setNotes((data ?? []).map((row) => ({
+        id: row.id, guestId: row.guest_id, name: row.name, note: row.note, timestamp: row.created_at,
+      })));
+    };
+    fetchNotes();
+    const channel = supabase
+      .channel("admin_love_notes_changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "love_notes" }, fetchNotes)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  // Fotos/videos de invitados — para poder mostrar "los suyos" en su detalle
+  const [guestMediaItems, setGuestMediaItems] = useState<GuestMediaItem[]>([]);
+  useEffect(() => {
+    if (!supabaseReady || !supabase) return;
+    const fetchMedia = async () => {
+      const { data, error } = await supabase.from("guest_media").select("*").order("created_at", { ascending: false });
+      if (error) { console.error(error); return; }
+      setGuestMediaItems((data ?? []).map((row) => ({
+        id: row.id, guestId: row.guest_id ?? null, name: row.name, folder: row.folder,
+        url: row.url, type: row.type, likes: row.likes ?? 0, timestamp: row.created_at,
+      })));
+    };
+    fetchMedia();
+    const channel = supabase
+      .channel("admin_guest_media_changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "guest_media" }, fetchMedia)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
 
   const [guests, setGuests] = useState<GuestRecord[]>([]);
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
+  const [expandedGuestId, setExpandedGuestId] = useState<string | null>(null);
   useEffect(() => {
     if (!supabaseReady || !supabase) return;
     supabase.from("invitados").select("*").order("grupo").order("nombre").then(({ data, error }) => {
@@ -2756,6 +2865,8 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
       setTimeout(() => setCopiedSlug(null), 2000);
     });
   };
+
+  const rsvpFor = (guestId: string) => entries.find((e) => e.guestId === guestId);
 
   const [videoGreetings, setVideoGreetings] = useState<{ id: string; name: string; videoUrl: string }[]>([]);
   useEffect(() => {
@@ -2872,7 +2983,7 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
           )}
         </div>
 
-        {/* Real guest list with pass counts */}
+        {/* Real guest list with pass counts — verde = ya confirmó; clic para ver su detalle */}
         {supabaseReady && guests.length > 0 && (
           <div className="mb-8 p-5" style={{ background: CREAM, border: `1px solid rgba(196,168,130,0.25)`, borderRadius: 4 }}>
             <p className="text-[10px] tracking-widest uppercase mb-4" style={{ fontFamily: SANS, color: GOLD }}>
@@ -2884,27 +2995,130 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
                   {side === "ingrid" ? "Invitados de Ingrid" : "Invitados de Douglas"}
                 </p>
                 <div className="space-y-1.5">
-                  {guests.filter((g) => g.side === side).map((g) => (
-                    <div key={g.id} className="flex items-center justify-between gap-3 px-3 py-2"
-                      style={{ background: "#FAF8F3", border: `1px solid rgba(196,168,130,0.18)`, borderRadius: 2 }}>
-                      <div className="min-w-0">
-                        <p className="text-sm truncate" style={{ fontFamily: SANS, color: BROWN }}>{g.displayName}</p>
-                        <p className="text-[10px]" style={{ fontFamily: SANS, color: TAN }}>{g.passes} {g.passes === 1 ? "pase" : "pases"}</p>
+                  {guests.filter((g) => g.side === side).map((g) => {
+                    const rsvp = rsvpFor(g.id);
+                    const confirmed = Boolean(rsvp);
+                    const expanded = expandedGuestId === g.id;
+                    const theirMedia = guestMediaItems.filter((m) => m.guestId === g.id);
+                    const theirNotes = notes.filter((n) => n.guestId === g.id);
+                    return (
+                      <div key={g.id} className="overflow-hidden" style={{ borderRadius: 2 }}>
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setExpandedGuestId(expanded ? null : g.id)}
+                          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setExpandedGuestId(expanded ? null : g.id); }}
+                          className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left transition-colors cursor-pointer"
+                          style={{
+                            background: confirmed ? "rgba(122,168,116,0.16)" : "#FAF8F3",
+                            border: `1px solid ${confirmed ? "rgba(96,148,90,0.4)" : "rgba(196,168,130,0.18)"}`,
+                          }}
+                        >
+                          <div className="min-w-0 flex items-center gap-2">
+                            {confirmed && <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: "#5A9450" }} />}
+                            <div className="min-w-0">
+                              <p className="text-sm truncate" style={{ fontFamily: SANS, color: confirmed ? "#3E6B38" : BROWN }}>{g.displayName}</p>
+                              <p className="text-[10px]" style={{ fontFamily: SANS, color: confirmed ? "#5A9450" : TAN }}>
+                                {confirmed
+                                  ? `Confirmado — ${rsvp!.attendeeCount ?? "?"} de ${g.passes} pases`
+                                  : `${g.passes} ${g.passes === 1 ? "pase" : "pases"} · sin confirmar`}
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); copyGuestLink(g.slug); }}
+                            className="flex-shrink-0 px-3 py-1.5 text-[10px] tracking-widest uppercase transition-all"
+                            style={{
+                              fontFamily: SANS,
+                              background: copiedSlug === g.slug ? "rgba(196,168,130,0.25)" : `linear-gradient(135deg, ${GOLD}, ${GOLD_DARK})`,
+                              color: copiedSlug === g.slug ? BROWN : CREAM,
+                              borderRadius: 2,
+                            }}
+                          >
+                            {copiedSlug === g.slug ? "¡Copiado!" : "Copiar"}
+                          </button>
+                        </div>
+
+                        <AnimatePresence initial={false}>
+                          {expanded && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.25 }}
+                              style={{ overflow: "hidden", background: "#FFFBF2", border: `1px solid rgba(196,168,130,0.18)`, borderTop: "none" }}
+                            >
+                              <div className="p-4 space-y-3">
+                                {!confirmed ? (
+                                  <p className="text-xs italic" style={{ fontFamily: SANS, color: TAN }}>Aún no ha confirmado asistencia.</p>
+                                ) : (
+                                  <>
+                                    <div className="grid grid-cols-2 gap-3 text-xs">
+                                      <div>
+                                        <p className="tracking-widest uppercase mb-1" style={{ fontFamily: SANS, color: GOLD }}>Confirmó</p>
+                                        <p style={{ fontFamily: SANS, color: BROWN }}>{rsvp!.name} {rsvp!.phone ? `· ${rsvp!.phone}` : ""}</p>
+                                      </div>
+                                      <div>
+                                        <p className="tracking-widest uppercase mb-1" style={{ fontFamily: SANS, color: GOLD }}>Asistentes</p>
+                                        <p style={{ fontFamily: SANS, color: BROWN }}>{rsvp!.attendeeCount ?? "—"} de {g.passes} pases</p>
+                                      </div>
+                                      <div>
+                                        <p className="tracking-widest uppercase mb-1" style={{ fontFamily: SANS, color: GOLD }}>Alimentación</p>
+                                        <p style={{ fontFamily: SANS, color: BROWN }}>{rsvp!.dietary || "—"}</p>
+                                      </div>
+                                      <div>
+                                        <p className="tracking-widest uppercase mb-1" style={{ fontFamily: SANS, color: GOLD }}>Canción</p>
+                                        <p style={{ fontFamily: SANS, color: BROWN }}>{rsvp!.songRequest || "—"}</p>
+                                      </div>
+                                    </div>
+                                    {rsvp!.loveNote && (
+                                      <div>
+                                        <p className="text-xs tracking-widest uppercase mb-1" style={{ fontFamily: SANS, color: GOLD }}>Mensaje</p>
+                                        <p className="text-xs italic" style={{ fontFamily: SERIF, color: BROWN }}>"{rsvp!.loveNote}"</p>
+                                      </div>
+                                    )}
+                                    {rsvp!.videoUrl && (
+                                      <a href={rsvp!.videoUrl} target="_blank" rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 text-[10px] tracking-widest uppercase" style={{ fontFamily: SANS, color: GOLD }}>
+                                        <Video style={{ width: 12, height: 12 }} /> Ver video de RSVP
+                                      </a>
+                                    )}
+                                  </>
+                                )}
+
+                                {theirNotes.length > 0 && (
+                                  <div>
+                                    <p className="text-xs tracking-widest uppercase mb-1" style={{ fontFamily: SANS, color: GOLD }}>
+                                      Sus notas ({theirNotes.length})
+                                    </p>
+                                    {theirNotes.map((n) => (
+                                      <p key={n.id} className="text-xs italic mb-1" style={{ fontFamily: SERIF, color: BROWN }}>"{n.note}"</p>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {theirMedia.length > 0 && (
+                                  <div>
+                                    <p className="text-xs tracking-widest uppercase mb-2" style={{ fontFamily: SANS, color: GOLD }}>
+                                      Sus fotos/videos ({theirMedia.length})
+                                    </p>
+                                    <div className="flex gap-2 flex-wrap">
+                                      {theirMedia.map((m) => (
+                                        <a key={m.id} href={m.url} target="_blank" rel="noopener noreferrer"
+                                          className="w-14 h-14 rounded overflow-hidden flex-shrink-0" style={{ border: `1px solid rgba(196,168,130,0.3)` }}>
+                                          {m.type === "photo"
+                                            ? <img src={m.url} alt="" className="w-full h-full object-cover" />
+                                            : <div className="w-full h-full flex items-center justify-center" style={{ background: "#1a1208" }}><Video style={{ width: 16, height: 16, color: CREAM }} /></div>}
+                                        </a>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </div>
-                      <button
-                        onClick={() => copyGuestLink(g.slug)}
-                        className="flex-shrink-0 px-3 py-1.5 text-[10px] tracking-widest uppercase transition-all"
-                        style={{
-                          fontFamily: SANS,
-                          background: copiedSlug === g.slug ? "rgba(196,168,130,0.25)" : `linear-gradient(135deg, ${GOLD}, ${GOLD_DARK})`,
-                          color: copiedSlug === g.slug ? BROWN : CREAM,
-                          borderRadius: 2,
-                        }}
-                      >
-                        {copiedSlug === g.slug ? "¡Copiado!" : "Copiar"}
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ))}
@@ -3311,7 +3525,7 @@ export default function App() {
             <CountdownSection />
             <VideoSection />
             <MoreDetailsHub rsvpName={rsvpName} onRsvpSuccess={setRsvpName} guestName={guestName} guest={guest} />
-            <NosotrosSection />
+            <NosotrosSection guest={guest} />
             <MapSection />
             <Footer onAdminClick={() => setAdmin(true)} />
             <MusicPlayer
