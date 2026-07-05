@@ -452,6 +452,59 @@ function GoldButton({ children, onClick, type = "button", disabled = false, clas
   );
 }
 
+/** Popup que confirma (o avisa) el resultado de una subida — se cierra solo. */
+function UploadFeedbackPopup({ kind, onClose }: { kind: "success" | "error"; onClose: () => void }) {
+  useEffect(() => {
+    const t = window.setTimeout(onClose, 4000);
+    return () => window.clearTimeout(t);
+  }, [onClose]);
+
+  return createPortal(
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[90] flex items-center justify-center p-4"
+        style={{ background: "rgba(20,14,6,0.7)" }}
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ opacity: 0, scale: 0.85, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9 }}
+          transition={{ type: "spring", damping: 18, stiffness: 220 }}
+          onClick={(e) => e.stopPropagation()}
+          className="relative max-w-xs w-full text-center p-8"
+          style={{ background: "#FFFBF2", borderRadius: 4, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}
+        >
+          <motion.div
+            initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.1, type: "spring", damping: 14, stiffness: 220 }}
+            className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-5"
+            style={{ background: kind === "success" ? `linear-gradient(135deg, ${GOLD}, ${GOLD_DARK})` : "rgba(196,96,74,0.15)" }}
+          >
+            {kind === "success"
+              ? <Heart style={{ width: 26, height: 26, fill: CREAM, color: CREAM }} />
+              : <X style={{ width: 26, height: 26, color: "#C4604A" }} />}
+          </motion.div>
+          {kind === "success" ? (
+            <>
+              <h3 className="text-xl mb-2" style={{ fontFamily: SERIF, color: BROWN, fontStyle: "italic" }}>¡Subido con éxito!</h3>
+              <p className="text-sm" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
+                Gracias por hacer parte de este sueño 🤍
+              </p>
+            </>
+          ) : (
+            <>
+              <h3 className="text-xl mb-2" style={{ fontFamily: SERIF, color: BROWN, fontStyle: "italic" }}>No se pudo subir</h3>
+              <p className="text-sm" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
+                Intenta de nuevo en un momento — revisa tu conexión.
+              </p>
+            </>
+          )}
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>,
+    document.body
+  );
+}
+
 // ─── Ultra-Realistic 3D Envelope ──────────────────────────────────────────────
 
 // Stable random values — computed once, not on every render
@@ -1373,6 +1426,7 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
   const [addName, setAddName] = useState(guest?.displayName ?? "");
   const [addFile, setAddFile] = useState<File | null>(null);
   const [adding, setAdding] = useState(false);
+  const [uploadFeedback, setUploadFeedback] = useState<"success" | "error" | null>(null);
 
   const scrollerRef = useRef<HTMLDivElement>(null);
   const interactingRef = useRef(false);
@@ -1566,8 +1620,10 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
       setAddFile(null);
       setAddOpen(false);
       await fetchCommunity();
+      setUploadFeedback("success");
     } catch (err) {
       console.error(err);
+      setUploadFeedback("error");
     } finally {
       setAdding(false);
     }
@@ -1799,6 +1855,7 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
           </motion.div>
         )}
       </AnimatePresence>
+      {uploadFeedback && <UploadFeedbackPopup kind={uploadFeedback} onClose={() => setUploadFeedback(null)} />}
     </>
   );
 }
@@ -1821,6 +1878,7 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
   const [activeItem, setActiveItem] = useState<GuestMediaItem | null>(null);
   const [comments, setComments] = useState<GuestMediaComment[]>([]);
   const [commentForm, setCommentForm] = useState({ name: "", message: "" });
+  const [uploadFeedback, setUploadFeedback] = useState<"success" | "error" | null>(null);
   useBodyScrollLock(!!activeItem);
 
   const fetchItems = async () => {
@@ -1919,8 +1977,10 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
       setNewFolder("");
       setActiveFolder(targetFolder);
       await fetchItems();
+      setUploadFeedback("success");
     } catch (err) {
       console.error(err);
+      setUploadFeedback("error");
     } finally {
       setUploading(false);
     }
@@ -1940,6 +2000,7 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
   const visible = activeFolder === "Todas" ? items : items.filter((i) => i.folder === activeFolder);
 
   return (
+    <>
     <div className="max-w-4xl mx-auto">
           <Ornament />
           <p className="text-xs mt-2 mb-8 max-w-md mx-auto text-center" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
@@ -2161,6 +2222,8 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
           )}
         </AnimatePresence>
     </div>
+    {uploadFeedback && <UploadFeedbackPopup kind={uploadFeedback} onClose={() => setUploadFeedback(null)} />}
+    </>
   );
 }
 
