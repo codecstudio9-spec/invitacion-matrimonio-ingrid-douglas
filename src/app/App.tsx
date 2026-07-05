@@ -25,6 +25,7 @@ interface RSVPEntry {
   attendeeCount: number | null;
   songRequest: string | null;
   wantsLodging: boolean;
+  lodgingSlots: number;
   timestamp: string;
 }
 
@@ -2866,12 +2867,12 @@ function RSVPContent({ onSuccess, initialName = "", guest }: {
   useEffect(() => {
     if (!supabaseReady || !supabase) return;
     const fetchLodgingUsed = async () => {
-      const { count, error } = await supabase
+      const { data, error } = await supabase
         .from("rsvps")
-        .select("id", { count: "exact", head: true })
+        .select("lodging_slots")
         .eq("wants_lodging", true);
       if (error) { console.error(error); return; }
-      setLodgingUsed(count ?? 0);
+      setLodgingUsed((data ?? []).reduce((sum, row) => sum + (row.lodging_slots ?? 1), 0));
     };
     fetchLodgingUsed();
     const channel = supabase
@@ -2911,6 +2912,7 @@ function RSVPContent({ onSuccess, initialName = "", guest }: {
           attendee_count: attendeeCount,
           song_request: form.songRequest || null,
           wants_lodging: wantsLodging,
+          lodging_slots: wantsLodging ? 1 : 0,
         });
         if (error) throw error;
         savedRemotely = true;
@@ -2933,6 +2935,7 @@ function RSVPContent({ onSuccess, initialName = "", guest }: {
           attendeeCount,
           songRequest: form.songRequest || null,
           wantsLodging,
+          lodgingSlots: wantsLodging ? 1 : 0,
           timestamp: new Date().toISOString(),
         };
         const prev: RSVPEntry[] = JSON.parse(localStorage.getItem("rsvp_entries") || "[]");
@@ -3373,6 +3376,7 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
         attendeeCount: row.attendee_count ?? null,
         songRequest: row.song_request ?? null,
         wantsLodging: row.wants_lodging ?? false,
+        lodgingSlots: row.lodging_slots ?? (row.wants_lodging ? 1 : 0),
         timestamp: row.created_at,
       })));
     };
@@ -3488,8 +3492,22 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
   };
   const [detail, setDetail] = useState<DetailModalState | null>(null);
 
-  const deleteRow = async (table: string, id: string) => {
+  // El URL público de Supabase Storage trae el bucket y la ruta incrustados:
+  // .../storage/v1/object/public/<bucket>/<ruta-del-archivo>
+  const deleteStorageObject = async (bucket: string, publicUrl: string) => {
     if (!supabase) return;
+    const marker = `/object/public/${bucket}/`;
+    const idx = publicUrl.indexOf(marker);
+    if (idx === -1) return;
+    const path = decodeURIComponent(publicUrl.slice(idx + marker.length));
+    const { error } = await supabase.storage.from(bucket).remove([path]);
+    if (error) console.error("No se pudo borrar el archivo físico:", error);
+  };
+
+  const deleteRow = async (table: string, id: string, mediaUrl?: string | null) => {
+    if (!supabase) return;
+    if (mediaUrl && table === "guest_media") await deleteStorageObject(GUEST_MEDIA_BUCKET, mediaUrl);
+    if (mediaUrl && table === "video_greetings") await deleteStorageObject(VIDEO_GREETINGS_BUCKET, mediaUrl);
     const { error } = await supabase.from(table).delete().eq("id", id);
     if (error) { console.error(error); return; }
     // No dependemos solo del canal realtime — quitamos el item de esta
@@ -3551,7 +3569,7 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
   const guestSideById = new Map(guests.map((g) => [g.id, g.side] as const));
   const confirmedIngrid = entries.filter((e) => e.attending && e.guestId && guestSideById.get(e.guestId) === "ingrid").length;
   const confirmedDouglas = entries.filter((e) => e.attending && e.guestId && guestSideById.get(e.guestId) === "douglas").length;
-  const lodgingUsed = entries.filter((e) => e.wantsLodging).length;
+  const lodgingUsed = entries.filter((e) => e.wantsLodging).reduce((sum, e) => sum + (e.lodgingSlots || 1), 0);
   const lodgingRemaining = config ? Math.max(0, config.lodgingTotalSlots - lodgingUsed) : null;
   const confirmedAttendeeTotal = entries.filter((e) => e.attending).reduce((sum, e) => sum + (e.attendeeCount ?? 1), 0);
   const budgetFromGuests = config ? confirmedAttendeeTotal * config.pricePerPerson : 0;
@@ -3953,6 +3971,51 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
+        {/* Fotos y videos de invitados */}
+        {guestMediaItems.length > 0 && (
+          <div className="mb-10">
+            <h3 className="text-lg mb-4" style={{ fontFamily: SERIF, color: BROWN }}>Fotos y videos de invitados ({guestMediaItems.length})</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {guestMediaItems.map((m) => (
+                <div
+                  key={m.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setDetail({
+                    title: m.name,
+                    subtitle: `${m.folder} · ${m.type === "video" ? "Video" : "Foto"}`,
+                    fields: [
+                      { label: "Subido por", value: m.name },
+                      { label: "Carpeta", value: m.folder },
+                      { label: "Likes", value: String(m.likes) },
+                      { label: "Fecha", value: new Date(m.timestamp).toLocaleString("es-CO") },
+                    ],
+                    mediaUrl: m.url,
+                    mediaType: m.type,
+                    onDelete: () => deleteRow("guest_media", m.id, m.url),
+                  })}
+                  className="relative rounded-lg overflow-hidden cursor-pointer transition-transform active:scale-[0.97]"
+                  style={{ aspectRatio: "4/5" }}
+                >
+                  {m.type === "photo"
+                    ? <img src={m.url} alt="" className="w-full h-full object-cover" />
+                    : <video src={m.url} className="w-full h-full object-cover" muted playsInline />}
+                  {m.type === "video" && (
+                    <div className="absolute inset-0 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.15)" }}>
+                      <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.45)" }}>
+                        <Video style={{ width: 15, height: 15, color: CREAM }} />
+                      </div>
+                    </div>
+                  )}
+                  <div className="absolute bottom-0 inset-x-0 px-2 py-1.5" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.6), transparent)" }}>
+                    <span className="text-[9px] tracking-widest uppercase truncate block" style={{ fontFamily: SANS, color: CREAM }}>{m.name}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Love Notes */}
         {notes.length > 0 && (
           <div>
@@ -4003,7 +4066,7 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
                         fields: [{ label: "Nombre", value: v.name }],
                         mediaUrl: v.videoUrl,
                         mediaType: "video",
-                        onDelete: () => deleteRow("video_greetings", v.id),
+                        onDelete: () => deleteRow("video_greetings", v.id, v.videoUrl),
                       })}
                       className="text-[10px] tracking-widest uppercase flex-shrink-0"
                       style={{ fontFamily: SANS, color: TAN }}
