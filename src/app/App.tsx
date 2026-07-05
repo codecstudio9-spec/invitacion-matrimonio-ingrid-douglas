@@ -6,7 +6,8 @@ import {
   ChevronDown, X, Send, Navigation, Video, Upload, FolderPlus,
   ExternalLink, Heart, Star, Lock, Search, MessageCircle,
   Check, Users, PenLine, ChevronLeft, ChevronRight,
-  Shirt, BookOpen, Images, Gift, Banknote, Music,
+  Shirt, BookOpen, Images, Gift, Banknote, Music, Eye, EyeOff,
+  Home, DollarSign, MessageSquare,
 } from "lucide-react";
 import { supabase, supabaseReady, GUEST_MEDIA_BUCKET, VIDEO_GREETINGS_BUCKET } from "./supabase";
 
@@ -23,7 +24,14 @@ interface RSVPEntry {
   videoUrl: string | null;
   attendeeCount: number | null;
   songRequest: string | null;
+  wantsLodging: boolean;
   timestamp: string;
+}
+
+interface WeddingConfig {
+  pricePerPerson: number;
+  lodgingPricePerNight: number;
+  lodgingTotalSlots: number;
 }
 
 interface GuestMediaItem {
@@ -309,7 +317,7 @@ function SectionTitle({ children, italic = true }: { children: React.ReactNode; 
 
 /** All the "extra" sections collapsed behind circular buttons, 2 per row, so the
  *  page stays short — tapping a circle expands just that section beneath the grid. */
-function MoreDetailsHub({ rsvpName, onRsvpSuccess, guestName, guest }: { rsvpName: string | null; onRsvpSuccess: (name: string) => void; guestName: string; guest: GuestRecord | null }) {
+function MoreDetailsHub({ rsvpResult, onRsvpSuccess, guestName, guest }: { rsvpResult: RsvpResult | null; onRsvpSuccess: (result: RsvpResult) => void; guestName: string; guest: GuestRecord | null }) {
   // Nota: cada `content` es un elemento ya construido (no una referencia a
   // función). Esto es importante para RSVPHubContent — si en cambio se
   // envolviera en una función flecha nueva en cada render (como antes), React
@@ -323,8 +331,8 @@ function MoreDetailsHub({ rsvpName, onRsvpSuccess, guestName, guest }: { rsvpNam
     { key: "historia",   icon: BookOpen, label: "Nuestra Historia",     title: "Nuestra Historia",     content: <OurStoryContent />,  featured: false },
     { key: "notas",      icon: PenLine,  label: "Nota de Amor",         title: "Déjanos tu nota",      content: <LoveNotesContent guest={guest} />, featured: false },
     { key: "regalos",    icon: Gift,     label: "Mesa de Regalos",      title: "Mesa de Regalos",      content: <GiftsContent />,     featured: false },
-    { key: "rsvp",       icon: Check,    label: "Confirmar Asistencia", title: rsvpName ? "¡Gracias!" : "Confirmar Asistencia",
-      content: <RSVPHubContent rsvpName={rsvpName} onSuccess={onRsvpSuccess} guestName={guestName} guest={guest} />, featured: true },
+    { key: "rsvp",       icon: Check,    label: "Confirmar Asistencia", title: rsvpResult ? "¡Gracias!" : "Confirmar Asistencia",
+      content: <RSVPHubContent rsvpResult={rsvpResult} onSuccess={onRsvpSuccess} guestName={guestName} guest={guest} />, featured: true },
   ] as const;
 
   const [open, setOpen] = useState<string | null>(null);
@@ -1368,15 +1376,17 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
 
   useEffect(() => { activeItemRef.current = activeItem; }, [activeItem]);
 
+  const fetchStaticLikes = async () => {
+    if (!supabase) return;
+    const { data, error } = await supabase.from("gallery_photos").select("*");
+    if (error) { console.error(error); return; }
+    const map: Record<string, number> = {};
+    (data ?? []).forEach((row) => { map[row.src] = row.likes ?? 0; });
+    setStaticLikes(map);
+  };
+
   useEffect(() => {
     if (!supabaseReady || !supabase) return;
-    const fetchStaticLikes = async () => {
-      const { data, error } = await supabase.from("gallery_photos").select("*");
-      if (error) { console.error(error); return; }
-      const map: Record<string, number> = {};
-      (data ?? []).forEach((row) => { map[row.src] = row.likes ?? 0; });
-      setStaticLikes(map);
-    };
     fetchStaticLikes();
     const channel = supabase
       .channel("gallery_photos_changes")
@@ -1385,15 +1395,17 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
+  const fetchStaticComments = async () => {
+    if (!supabase) return;
+    const { data, error } = await supabase.from("gallery_comments").select("*").order("created_at", { ascending: true });
+    if (error) { console.error(error); return; }
+    setStaticComments((data ?? []).map((row) => ({
+      id: row.id, photoSrc: row.photo_src, name: row.name, message: row.message, timestamp: row.created_at,
+    })));
+  };
+
   useEffect(() => {
     if (!supabaseReady || !supabase) return;
-    const fetchStaticComments = async () => {
-      const { data, error } = await supabase.from("gallery_comments").select("*").order("created_at", { ascending: true });
-      if (error) { console.error(error); return; }
-      setStaticComments((data ?? []).map((row) => ({
-        id: row.id, photoSrc: row.photo_src, name: row.name, message: row.message, timestamp: row.created_at,
-      })));
-    };
     fetchStaticComments();
     const channel = supabase
       .channel("gallery_comments_changes")
@@ -1402,20 +1414,22 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
+  const fetchCommunity = async () => {
+    if (!supabase) return;
+    const { data, error } = await supabase
+      .from("guest_media")
+      .select("*")
+      .eq("folder", GALLERY_UPLOAD_FOLDER)
+      .order("created_at", { ascending: false });
+    if (error) { console.error(error); return; }
+    setCommunityItems((data ?? []).map((row) => ({
+      id: row.id, guestId: row.guest_id ?? null, name: row.name, folder: row.folder,
+      url: row.url, type: row.type, likes: row.likes ?? 0, timestamp: row.created_at,
+    })));
+  };
+
   useEffect(() => {
     if (!supabaseReady || !supabase) return;
-    const fetchCommunity = async () => {
-      const { data, error } = await supabase
-        .from("guest_media")
-        .select("*")
-        .eq("folder", GALLERY_UPLOAD_FOLDER)
-        .order("created_at", { ascending: false });
-      if (error) { console.error(error); return; }
-      setCommunityItems((data ?? []).map((row) => ({
-        id: row.id, guestId: row.guest_id ?? null, name: row.name, folder: row.folder,
-        url: row.url, type: row.type, likes: row.likes ?? 0, timestamp: row.created_at,
-      })));
-    };
     fetchCommunity();
     const channel = supabase
       .channel("gallery_community_changes")
@@ -1424,19 +1438,21 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
+  const fetchGalleryComments = async () => {
+    if (!supabase) return;
+    const { data, error } = await supabase.from("guest_media_comments").select("*").order("created_at", { ascending: true });
+    if (error) { console.error(error); return; }
+    setCommunityComments((data ?? []).map((row) => ({
+      id: row.id, mediaId: row.media_id, name: row.name, message: row.message, timestamp: row.created_at,
+    })));
+  };
+
   useEffect(() => {
     if (!supabaseReady || !supabase) return;
-    const fetchComments = async () => {
-      const { data, error } = await supabase.from("guest_media_comments").select("*").order("created_at", { ascending: true });
-      if (error) { console.error(error); return; }
-      setCommunityComments((data ?? []).map((row) => ({
-        id: row.id, mediaId: row.media_id, name: row.name, message: row.message, timestamp: row.created_at,
-      })));
-    };
-    fetchComments();
+    fetchGalleryComments();
     const channel = supabase
       .channel("gallery_community_comments_changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "guest_media_comments" }, fetchComments)
+      .on("postgres_changes", { event: "*", schema: "public", table: "guest_media_comments" }, fetchGalleryComments)
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, []);
@@ -1486,9 +1502,11 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
     if (item.kind === "static") {
       const { error } = await supabase.rpc("increment_gallery_like", { p_src: item.src, delta });
       if (error) { console.error(error); return; }
+      await fetchStaticLikes();
     } else {
       const { error } = await supabase.rpc("increment_like", { row_id: item.media.id, delta });
       if (error) { console.error(error); return; }
+      await fetchCommunity();
     }
     const next = new Set(likedByMe);
     if (isLiked) next.delete(item.key); else next.add(item.key);
@@ -1504,11 +1522,13 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
         photo_src: activeItem.src, name: commentForm.name.trim(), message: commentForm.message.trim(),
       });
       if (error) { console.error(error); return; }
+      await fetchStaticComments();
     } else {
       const { error } = await supabase.from("guest_media_comments").insert({
         media_id: activeItem.media.id, name: commentForm.name.trim(), message: commentForm.message.trim(),
       });
       if (error) { console.error(error); return; }
+      await fetchGalleryComments();
     }
     setCommentForm((f) => ({ ...f, message: "" }));
   };
@@ -1540,6 +1560,7 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
       if (insertError) throw insertError;
       setAddFile(null);
       setAddOpen(false);
+      await fetchCommunity();
     } catch (err) {
       console.error(err);
     } finally {
@@ -1797,25 +1818,27 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
   const [commentForm, setCommentForm] = useState({ name: "", message: "" });
   useBodyScrollLock(!!activeItem);
 
+  const fetchItems = async () => {
+    if (!supabase) return;
+    const { data, error } = await supabase
+      .from("guest_media")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) { console.error(error); return; }
+    setItems((data ?? []).map((row) => ({
+      id: row.id,
+      guestId: row.guest_id ?? null,
+      name: row.name,
+      folder: row.folder,
+      url: row.url,
+      type: row.type,
+      likes: row.likes ?? 0,
+      timestamp: row.created_at,
+    })));
+  };
+
   useEffect(() => {
     if (!supabaseReady || !supabase) return;
-    const fetchItems = async () => {
-      const { data, error } = await supabase
-        .from("guest_media")
-        .select("*")
-        .order("created_at", { ascending: false });
-      if (error) { console.error(error); return; }
-      setItems((data ?? []).map((row) => ({
-        id: row.id,
-        guestId: row.guest_id ?? null,
-        name: row.name,
-        folder: row.folder,
-        url: row.url,
-        type: row.type,
-        likes: row.likes ?? 0,
-        timestamp: row.created_at,
-      })));
-    };
     fetchItems();
 
     const channel = supabase
@@ -1826,19 +1849,21 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
+  const fetchComments = async () => {
+    if (!supabase) return;
+    const { data, error } = await supabase
+      .from("guest_media_comments")
+      .select("*")
+      .order("created_at", { ascending: true });
+    if (error) { console.error(error); return; }
+    setComments((data ?? []).map((row) => ({
+      id: row.id, mediaId: row.media_id, name: row.name, message: row.message, timestamp: row.created_at,
+    })));
+  };
+
   // All comments, kept live — filtered per photo/video when the lightbox is open
   useEffect(() => {
     if (!supabaseReady || !supabase) return;
-    const fetchComments = async () => {
-      const { data, error } = await supabase
-        .from("guest_media_comments")
-        .select("*")
-        .order("created_at", { ascending: true });
-      if (error) { console.error(error); return; }
-      setComments((data ?? []).map((row) => ({
-        id: row.id, mediaId: row.media_id, name: row.name, message: row.message, timestamp: row.created_at,
-      })));
-    };
     fetchComments();
 
     const channel = supabase
@@ -1859,6 +1884,7 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
     });
     if (error) { console.error(error); return; }
     setCommentForm((f) => ({ ...f, message: "" }));
+    fetchComments();
   };
 
   const folders = Array.from(new Set([...GUEST_MEDIA_DEFAULT_FOLDERS, ...items.map((i) => i.folder)]));
@@ -1886,6 +1912,8 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
       if (insertError) throw insertError;
       setFile(null);
       setNewFolder("");
+      setActiveFolder(targetFolder);
+      await fetchItems();
     } catch (err) {
       console.error(err);
     } finally {
@@ -2584,15 +2612,17 @@ function LoveNotesContent({ guest }: { guest: GuestRecord | null }) {
 
   // Muro en vivo: cualquiera con la invitación abierta ve aparecer notas
   // nuevas al instante, sin recargar.
+  const fetchNotes = async () => {
+    if (!supabase) return;
+    const { data, error } = await supabase.from("love_notes").select("*").order("created_at", { ascending: true });
+    if (error) { console.error(error); return; }
+    setNotes((data ?? []).map((row) => ({
+      id: row.id, guestId: row.guest_id, name: row.name, note: row.note, timestamp: row.created_at,
+    })));
+  };
+
   useEffect(() => {
     if (!supabaseReady || !supabase) return;
-    const fetchNotes = async () => {
-      const { data, error } = await supabase.from("love_notes").select("*").order("created_at", { ascending: true });
-      if (error) { console.error(error); return; }
-      setNotes((data ?? []).map((row) => ({
-        id: row.id, guestId: row.guest_id, name: row.name, note: row.note, timestamp: row.created_at,
-      })));
-    };
     fetchNotes();
     const channel = supabase
       .channel("love_notes_changes")
@@ -2643,6 +2673,7 @@ function LoveNotesContent({ guest }: { guest: GuestRecord | null }) {
           note: form.note.trim(),
         });
         if (error) throw error;
+        await fetchNotes();
       }
       setForm({ name: "", note: "" });
       setJustSent(true);
@@ -2731,12 +2762,56 @@ function LoveNotesContent({ guest }: { guest: GuestRecord | null }) {
 
 // ─── RSVP ─────────────────────────────────────────────────────────────────────
 
-function RSVPContent({ onSuccess, initialName = "", guest }: { onSuccess: (name: string) => void; initialName?: string; guest: GuestRecord | null }) {
+const formatCOP = (n: number) =>
+  new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(n);
+
+function RSVPContent({ onSuccess, initialName = "", guest }: {
+  onSuccess: (result: { name: string; attending: boolean; attendeeCount: number; wantsLodging: boolean }) => void;
+  initialName?: string;
+  guest: GuestRecord | null;
+}) {
   const [form, setForm] = useState({
     name: initialName, phone: "", attending: "yes", dietary: "", message: "",
-    attendeeCount: guest?.passes ?? 1, songRequest: "",
+    attendeeCount: guest?.passes ?? 1, songRequest: "", wantsLodging: false,
   });
   const [loading, setLoading] = useState(false);
+
+  const [lodgingConfig, setLodgingConfig] = useState<{ pricePerNight: number; totalSlots: number } | null>(null);
+  const [lodgingUsed, setLodgingUsed] = useState(0);
+  const lodgingSlotsLeft = lodgingConfig ? Math.max(0, lodgingConfig.totalSlots - lodgingUsed) : 0;
+
+  useEffect(() => {
+    if (!supabaseReady || !supabase) return;
+    const fetchConfig = async () => {
+      const { data, error } = await supabase.from("wedding_config").select("*").eq("id", 1).single();
+      if (error) { console.error(error); return; }
+      setLodgingConfig({ pricePerNight: data.lodging_price_per_night, totalSlots: data.lodging_total_slots });
+    };
+    fetchConfig();
+    const channel = supabase
+      .channel("rsvp_wedding_config_changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "wedding_config" }, fetchConfig)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  useEffect(() => {
+    if (!supabaseReady || !supabase) return;
+    const fetchLodgingUsed = async () => {
+      const { count, error } = await supabase
+        .from("rsvps")
+        .select("id", { count: "exact", head: true })
+        .eq("wants_lodging", true);
+      if (error) { console.error(error); return; }
+      setLodgingUsed(count ?? 0);
+    };
+    fetchLodgingUsed();
+    const channel = supabase
+      .channel("rsvp_lodging_count_changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "rsvps" }, fetchLodgingUsed)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -2752,6 +2827,7 @@ function RSVPContent({ onSuccess, initialName = "", guest }: { onSuccess: (name:
     setLoading(true);
 
     const attendeeCount = form.attending === "yes" ? form.attendeeCount : 0;
+    const wantsLodging = form.attending === "yes" && form.wantsLodging && lodgingSlotsLeft > 0;
     let savedRemotely = false;
 
     if (supabaseReady && supabase) {
@@ -2766,6 +2842,7 @@ function RSVPContent({ onSuccess, initialName = "", guest }: { onSuccess: (name:
           guest_id: guest?.id ?? null,
           attendee_count: attendeeCount,
           song_request: form.songRequest || null,
+          wants_lodging: wantsLodging,
         });
         if (error) throw error;
         savedRemotely = true;
@@ -2787,6 +2864,7 @@ function RSVPContent({ onSuccess, initialName = "", guest }: { onSuccess: (name:
           videoUrl: null,
           attendeeCount,
           songRequest: form.songRequest || null,
+          wantsLodging,
           timestamp: new Date().toISOString(),
         };
         const prev: RSVPEntry[] = JSON.parse(localStorage.getItem("rsvp_entries") || "[]");
@@ -2797,7 +2875,7 @@ function RSVPContent({ onSuccess, initialName = "", guest }: { onSuccess: (name:
     }
 
     setLoading(false);
-    onSuccess(form.name);
+    onSuccess({ name: form.name, attending: form.attending === "yes", attendeeCount, wantsLodging });
   };
 
   const lineStyle = {
@@ -2874,6 +2952,35 @@ function RSVPContent({ onSuccess, initialName = "", guest }: { onSuccess: (name:
           </Reveal>
         )}
 
+        {form.attending === "yes" && lodgingConfig && (
+          <Reveal delay={0.14}>
+            <div className="p-4" style={{ border: `1px dashed rgba(196,168,130,0.45)`, borderRadius: 4 }}>
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.wantsLodging}
+                  disabled={lodgingSlotsLeft <= 0}
+                  onChange={(e) => setForm((f) => ({ ...f, wantsLodging: e.target.checked }))}
+                  className="mt-1"
+                  style={{ accentColor: GOLD }}
+                />
+                <span className="flex items-start gap-2">
+                  <Home style={{ width: 15, height: 15, color: GOLD, flexShrink: 0, marginTop: 2 }} />
+                  <span className="text-sm" style={{ fontFamily: SANS, color: BROWN }}>
+                    ¿Deseas hospedarte en el lugar del evento?
+                  </span>
+                </span>
+              </label>
+              <p className="text-xs mt-2 ml-7" style={{ fontFamily: SANS, color: TAN }}>
+                {formatCOP(lodgingConfig.pricePerNight)} por noche.{" "}
+                {lodgingSlotsLeft > 0
+                  ? <>Solo quedan <strong style={{ color: GOLD }}>{lodgingSlotsLeft}</strong> {lodgingSlotsLeft === 1 ? "cupo disponible" : "cupos disponibles"}.</>
+                  : <strong style={{ color: "#C4604A" }}>Ya no quedan cupos de hospedaje disponibles.</strong>}
+              </p>
+            </div>
+          </Reveal>
+        )}
+
         <Reveal delay={0.15}>
           <input type="text" placeholder="Restricciones alimenticias"
             className="w-full px-0 py-3 bg-transparent border-b outline-none text-sm placeholder:text-[#C4A882]/50"
@@ -2912,7 +3019,25 @@ function RSVPContent({ onSuccess, initialName = "", guest }: { onSuccess: (name:
 
 // ─── Thank You ────────────────────────────────────────────────────────────────
 
-function ThankYouContent({ name }: { name: string }) {
+const WHATSAPP_NUMBER = "573112726359";
+
+interface RsvpResult {
+  name: string;
+  attending: boolean;
+  attendeeCount: number;
+  wantsLodging: boolean;
+}
+
+function ThankYouContent({ result }: { result: RsvpResult }) {
+  const { name, attending, wantsLodging } = result;
+
+  const whatsappHref = (() => {
+    const msg = attending
+      ? `Hola! Soy ${name} 🎉 Quiero confirmar mi asistencia a la boda de Ingrid & Douglas${wantsLodging ? " (y también reservé un cupo de hospedaje)" : ""}. Aquí les cuento los detalles de mis tiquetes:`
+      : `Hola! Soy ${name}, les escribo sobre la boda de Ingrid & Douglas.`;
+    return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(msg)}`;
+  })();
+
   return (
     <div className="max-w-md mx-auto text-center">
       <motion.div
@@ -2930,9 +3055,29 @@ function ThankYouContent({ name }: { name: string }) {
 
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.7 }}>
         <Ornament />
-        <p className="text-sm leading-loose" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
-          Tu confirmación ha sido recibida con mucho amor. Que Dios te bendiga por acompañarnos en este día tan especial.
-        </p>
+        {attending ? (
+          <p className="text-sm leading-loose" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
+            ¡Gracias por confirmar! Hemos reservado tu lugar con mucho amor (y gastos preparados). Como los cupos son muy exclusivos, contamos con tu valiosa asistencia. ¡No nos vayas a faltar! ❤️
+            <br /><br />
+            Si viajas en avión, te aconsejamos comprar tus tiquetes aéreos con tiempo para asegurar los mejores precios.
+          </p>
+        ) : (
+          <p className="text-sm leading-loose" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
+            Gracias por avisarnos. Te vamos a extrañar ese día, pero lo entendemos con todo el cariño.
+          </p>
+        )}
+
+        {attending && (
+          <a
+            href={whatsappHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 mt-6 px-6 py-3 text-[11px] tracking-widest uppercase transition-transform active:scale-95"
+            style={{ fontFamily: SANS, background: "#25D366", color: "#FFFFFF", borderRadius: 999 }}
+          >
+            <MessageSquare style={{ width: 15, height: 15 }} /> Escribirnos por WhatsApp
+          </a>
+        )}
 
         <div className="mt-10 py-6 px-8 text-center" style={{
           background: "rgba(242,237,227,0.6)",
@@ -2953,19 +3098,26 @@ function ThankYouContent({ name }: { name: string }) {
 }
 
 /** Whichever the guest hasn't done yet: the RSVP form, or (once submitted) the thank-you screen. */
-function RSVPHubContent({ rsvpName, onSuccess, guestName, guest }: { rsvpName: string | null; onSuccess: (name: string) => void; guestName: string; guest: GuestRecord | null }) {
+function RSVPHubContent({ rsvpResult, onSuccess, guestName, guest }: {
+  rsvpResult: RsvpResult | null;
+  onSuccess: (result: RsvpResult) => void;
+  guestName: string;
+  guest: GuestRecord | null;
+}) {
   const [videoModalOpen, setVideoModalOpen] = useState(false);
   const [confirmedName, setConfirmedName] = useState("");
 
-  const handleSuccess = (name: string) => {
-    onSuccess(name);
-    setConfirmedName(name);
-    setVideoModalOpen(true);
+  const handleSuccess = (result: RsvpResult) => {
+    onSuccess(result);
+    if (result.attending) {
+      setConfirmedName(result.name);
+      setVideoModalOpen(true);
+    }
   };
 
   return (
     <>
-      {rsvpName ? <ThankYouContent name={rsvpName} /> : <RSVPContent onSuccess={handleSuccess} initialName={guestName} guest={guest} />}
+      {rsvpResult ? <ThankYouContent result={rsvpResult} /> : <RSVPContent onSuccess={handleSuccess} initialName={guestName} guest={guest} />}
       <VideoGreetingModal open={videoModalOpen} onClose={() => setVideoModalOpen(false)} guestName={confirmedName} guest={guest} />
     </>
   );
@@ -3123,6 +3275,7 @@ function AdminDetailModal({ title, subtitle, fields, mediaUrl, mediaType, onClos
 function AdminDashboard({ onClose }: { onClose: () => void }) {
   const [authed, setAuthed] = useState(false);
   const [pwd, setPwd] = useState("");
+  const [showPwd, setShowPwd] = useState(false);
   const [err, setErr] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "yes" | "no">("all");
@@ -3151,6 +3304,7 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
         videoUrl: row.video_url ?? null,
         attendeeCount: row.attendee_count ?? null,
         songRequest: row.song_request ?? null,
+        wantsLodging: row.wants_lodging ?? false,
         timestamp: row.created_at,
       })));
     };
@@ -3205,6 +3359,57 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
   const [guests, setGuests] = useState<GuestRecord[]>([]);
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
 
+  // Configuración financiera de la boda — editable aquí mismo, se ve en vivo
+  // en todos los dispositivos (incluido el contador de cupos en el RSVP).
+  const [config, setConfig] = useState<WeddingConfig | null>(null);
+  const [configDraft, setConfigDraft] = useState({ pricePerPerson: "", lodgingPricePerNight: "", lodgingTotalSlots: "" });
+  const [savingConfig, setSavingConfig] = useState(false);
+  const [configSaved, setConfigSaved] = useState(false);
+
+  useEffect(() => {
+    if (!supabaseReady || !supabase) return;
+    const fetchConfig = async () => {
+      const { data, error } = await supabase.from("wedding_config").select("*").eq("id", 1).single();
+      if (error) { console.error(error); return; }
+      const next: WeddingConfig = {
+        pricePerPerson: data.price_per_person ?? 0,
+        lodgingPricePerNight: data.lodging_price_per_night ?? 0,
+        lodgingTotalSlots: data.lodging_total_slots ?? 0,
+      };
+      setConfig(next);
+      setConfigDraft({
+        pricePerPerson: String(next.pricePerPerson),
+        lodgingPricePerNight: String(next.lodgingPricePerNight),
+        lodgingTotalSlots: String(next.lodgingTotalSlots),
+      });
+    };
+    fetchConfig();
+    const channel = supabase
+      .channel("admin_wedding_config_changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "wedding_config" }, fetchConfig)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  const saveConfig = async () => {
+    if (!supabase) return;
+    setSavingConfig(true);
+    try {
+      const { error } = await supabase.from("wedding_config").update({
+        price_per_person: Number(configDraft.pricePerPerson) || 0,
+        lodging_price_per_night: Number(configDraft.lodgingPricePerNight) || 0,
+        lodging_total_slots: Number(configDraft.lodgingTotalSlots) || 0,
+      }).eq("id", 1);
+      if (error) throw error;
+      setConfigSaved(true);
+      setTimeout(() => setConfigSaved(false), 2000);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingConfig(false);
+    }
+  };
+
   type DetailModalState = {
     title: string;
     subtitle?: string;
@@ -3219,6 +3424,12 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
     if (!supabase) return;
     const { error } = await supabase.from(table).delete().eq("id", id);
     if (error) { console.error(error); return; }
+    // No dependemos solo del canal realtime — quitamos el item de esta
+    // pantalla al instante, sin esperar a que llegue el evento por websocket.
+    if (table === "rsvps") setEntries((prev) => prev.filter((e) => e.id !== id));
+    if (table === "love_notes") setNotes((prev) => prev.filter((n) => n.id !== id));
+    if (table === "guest_media") setGuestMediaItems((prev) => prev.filter((m) => m.id !== id));
+    if (table === "video_greetings") setVideoGreetings((prev) => prev.filter((v) => v.id !== id));
     setDetail(null);
   };
 
@@ -3269,8 +3480,18 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
     return ms && mf;
   });
 
+  const guestSideById = new Map(guests.map((g) => [g.id, g.side] as const));
+  const confirmedIngrid = entries.filter((e) => e.attending && e.guestId && guestSideById.get(e.guestId) === "ingrid").length;
+  const confirmedDouglas = entries.filter((e) => e.attending && e.guestId && guestSideById.get(e.guestId) === "douglas").length;
+  const lodgingUsed = entries.filter((e) => e.wantsLodging).length;
+  const lodgingRemaining = config ? Math.max(0, config.lodgingTotalSlots - lodgingUsed) : null;
+  const confirmedAttendeeTotal = entries.filter((e) => e.attending).reduce((sum, e) => sum + (e.attendeeCount ?? 1), 0);
+  const budgetFromGuests = config ? confirmedAttendeeTotal * config.pricePerPerson : 0;
+  const budgetFromLodging = config ? lodgingUsed * config.lodgingPricePerNight : 0;
+  const budgetTotal = budgetFromGuests + budgetFromLodging;
+
   const stats = {
-    total:     entries.length,
+    total:     guests.length || entries.length,
     confirmed: entries.filter((e) => e.attending).length,
     declined:  entries.filter((e) => !e.attending).length,
     notes:     notes.length,
@@ -3291,10 +3512,21 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
             <p className="text-xs mt-1 tracking-widest uppercase" style={{ fontFamily: SANS, color: TAN }}>Ingrid & Douglas · 2026</p>
           </div>
           <form onSubmit={login} className="space-y-5">
-            <input type="password" placeholder="Contraseña"
-              className="w-full px-0 py-3 bg-transparent border-b outline-none text-sm"
-              style={{ fontFamily: SANS, color: BROWN, borderBottomColor: "rgba(196,168,130,0.4)", borderBottomStyle: "solid", borderBottomWidth: 1 }}
-              value={pwd} onChange={(e) => setPwd(e.target.value)} />
+            <div className="relative">
+              <input type={showPwd ? "text" : "password"} placeholder="Contraseña"
+                className="w-full px-0 py-3 pr-8 bg-transparent border-b outline-none text-sm"
+                style={{ fontFamily: SANS, color: BROWN, borderBottomColor: "rgba(196,168,130,0.4)", borderBottomStyle: "solid", borderBottomWidth: 1 }}
+                value={pwd} onChange={(e) => setPwd(e.target.value)} />
+              <button
+                type="button"
+                onClick={() => setShowPwd((v) => !v)}
+                aria-label={showPwd ? "Ocultar contraseña" : "Mostrar contraseña"}
+                className="absolute right-0 top-1/2 -translate-y-1/2"
+                style={{ color: TAN }}
+              >
+                {showPwd ? <EyeOff style={{ width: 16, height: 16 }} /> : <Eye style={{ width: 16, height: 16 }} />}
+              </button>
+            </div>
             {err && <p className="text-xs" style={{ fontFamily: SANS, color: "#C47050" }}>Contraseña incorrecta</p>}
             <GoldButton type="submit" className="w-full py-3">Acceder</GoldButton>
           </form>
@@ -3385,6 +3617,7 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
                           { label: "Asistentes", value: `${rsvp!.attendeeCount ?? "—"} de ${g.passes} pases` },
                           { label: "Alimentación", value: rsvp!.dietary || "—" },
                           { label: "Canción", value: rsvp!.songRequest || "—" },
+                          { label: "Hospedaje", value: rsvp!.wantsLodging ? "Sí, reservó cupo" : "No" },
                           { label: "Mensaje", value: rsvp!.loveNote || "—" },
                           { label: "Video de RSVP", value: rsvp!.videoUrl || "—" },
                         );
@@ -3450,13 +3683,13 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
         )}
 
         {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-8">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-3">
           {[
-            { label: "Total",       value: stats.total,     Icon: Users },
-            { label: "Confirmados", value: stats.confirmed, Icon: Check },
-            { label: "No asisten",  value: stats.declined,  Icon: X },
-            { label: "Notas amor",  value: stats.notes,     Icon: Heart },
-            { label: "Videos",      value: stats.videos,    Icon: Video },
+            { label: "Invitados totales",  value: stats.total,       Icon: Users },
+            { label: "Confirmados Ingrid", value: confirmedIngrid,   Icon: Check },
+            { label: "Confirmados Douglas",value: confirmedDouglas,  Icon: Check },
+            { label: "Inasistencias",      value: stats.declined,    Icon: X },
+            { label: "Cupos hospedaje",    value: lodgingRemaining ?? "—", Icon: Home },
           ].map(({ label, value, Icon }) => (
             <div key={label} className="p-4" style={{ background: CREAM, border: `1px solid rgba(196,168,130,0.22)`, borderRadius: 2 }}>
               <Icon style={{ width: 15, height: 15, color: GOLD, marginBottom: 8 }} />
@@ -3464,6 +3697,90 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
               <div className="text-[10px] tracking-widest uppercase" style={{ fontFamily: SANS, color: TAN }}>{label}</div>
             </div>
           ))}
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-8">
+          {[
+            { label: "Notas amor",  value: stats.notes,     Icon: Heart },
+            { label: "Videos",      value: stats.videos,    Icon: Video },
+            { label: "Hospedajes reservados", value: lodgingUsed, Icon: Home },
+          ].map(({ label, value, Icon }) => (
+            <div key={label} className="p-4" style={{ background: CREAM, border: `1px solid rgba(196,168,130,0.22)`, borderRadius: 2 }}>
+              <Icon style={{ width: 15, height: 15, color: GOLD, marginBottom: 8 }} />
+              <div className="text-3xl mb-0.5" style={{ fontFamily: SERIF, color: BROWN }}>{value}</div>
+              <div className="text-[10px] tracking-widest uppercase" style={{ fontFamily: SANS, color: TAN }}>{label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Costos e Ingresos — editable, con cálculo automático en vivo */}
+        <div className="mb-8 p-5" style={{ background: CREAM, border: `1px solid rgba(196,168,130,0.25)`, borderRadius: 4 }}>
+          <p className="text-[10px] tracking-widest uppercase mb-4 flex items-center gap-1.5" style={{ fontFamily: SANS, color: GOLD }}>
+            <DollarSign style={{ width: 12, height: 12 }} /> Costos e ingresos del matrimonio
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+            <div>
+              <label className="text-[10px] tracking-widest uppercase mb-1 block" style={{ fontFamily: SANS, color: TAN }}>Precio base por persona</label>
+              <input
+                type="number" min="0"
+                className="w-full px-3 py-2 text-sm outline-none"
+                style={{ fontFamily: SANS, color: BROWN, background: "#FAF8F3", border: `1px solid rgba(196,168,130,0.3)`, borderRadius: 2 }}
+                value={configDraft.pricePerPerson}
+                onChange={(e) => setConfigDraft((d) => ({ ...d, pricePerPerson: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-[10px] tracking-widest uppercase mb-1 block" style={{ fontFamily: SANS, color: TAN }}>Costo hospedaje / noche</label>
+              <input
+                type="number" min="0"
+                className="w-full px-3 py-2 text-sm outline-none"
+                style={{ fontFamily: SANS, color: BROWN, background: "#FAF8F3", border: `1px solid rgba(196,168,130,0.3)`, borderRadius: 2 }}
+                value={configDraft.lodgingPricePerNight}
+                onChange={(e) => setConfigDraft((d) => ({ ...d, lodgingPricePerNight: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-[10px] tracking-widest uppercase mb-1 block" style={{ fontFamily: SANS, color: TAN }}>Cupos totales de hospedaje</label>
+              <input
+                type="number" min="0"
+                className="w-full px-3 py-2 text-sm outline-none"
+                style={{ fontFamily: SANS, color: BROWN, background: "#FAF8F3", border: `1px solid rgba(196,168,130,0.3)`, borderRadius: 2 }}
+                value={configDraft.lodgingTotalSlots}
+                onChange={(e) => setConfigDraft((d) => ({ ...d, lodgingTotalSlots: e.target.value }))}
+              />
+            </div>
+          </div>
+          <button
+            onClick={saveConfig}
+            disabled={savingConfig}
+            className="px-4 py-2 text-[10px] tracking-widest uppercase transition-all disabled:opacity-50 mb-5"
+            style={{ fontFamily: SANS, background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DARK})`, color: CREAM, borderRadius: 2 }}
+          >
+            {configSaved ? "¡Guardado!" : savingConfig ? "Guardando…" : "Guardar cambios"}
+          </button>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4" style={{ borderTop: `1px solid rgba(196,168,130,0.2)` }}>
+            <div>
+              <p className="text-[10px] tracking-widest uppercase mb-1" style={{ fontFamily: SANS, color: GOLD }}>
+                Invitados confirmados × precio
+              </p>
+              <p className="text-lg" style={{ fontFamily: SERIF, color: BROWN }}>{formatCOP(budgetFromGuests)}</p>
+              <p className="text-[10px]" style={{ fontFamily: SANS, color: TAN }}>{confirmedAttendeeTotal} personas</p>
+            </div>
+            <div>
+              <p className="text-[10px] tracking-widest uppercase mb-1" style={{ fontFamily: SANS, color: GOLD }}>
+                Hospedajes reservados
+              </p>
+              <p className="text-lg" style={{ fontFamily: SERIF, color: BROWN }}>{formatCOP(budgetFromLodging)}</p>
+              <p className="text-[10px]" style={{ fontFamily: SANS, color: TAN }}>{lodgingUsed} {lodgingUsed === 1 ? "cupo" : "cupos"}</p>
+            </div>
+            <div>
+              <p className="text-[10px] tracking-widest uppercase mb-1" style={{ fontFamily: SANS, color: GOLD }}>
+                Total acumulado
+              </p>
+              <p className="text-2xl" style={{ fontFamily: SERIF, color: "#3E6B38" }}>{formatCOP(budgetTotal)}</p>
+            </div>
+          </div>
         </div>
 
         {/* Search + Filter */}
@@ -3520,6 +3837,7 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
                         { label: "Asistentes", value: e.attendeeCount != null ? String(e.attendeeCount) : "—" },
                         { label: "Alimentación", value: e.dietary || "—" },
                         { label: "Canción", value: e.songRequest || "—" },
+                        { label: "Hospedaje", value: e.wantsLodging ? "Sí, reservó cupo" : "No" },
                         { label: "Mensaje", value: e.loveNote || "—" },
                         { label: "Video de RSVP", value: e.videoUrl || "—" },
                         { label: "Fecha", value: new Date(e.timestamp).toLocaleString("es-CO") },
@@ -3820,7 +4138,7 @@ const CSS = `
 export default function App() {
   const [opened, setOpened]     = useState(false);
   const [admin, setAdmin]       = useState(false);
-  const [rsvpName, setRsvpName] = useState<string | null>(null);
+  const [rsvpResult, setRsvpResult] = useState<RsvpResult | null>(null);
   const [guestName, setGuestName] = useState<string>("");
   const [guest, setGuest] = useState<GuestRecord | null>(null);
   // Solo mostramos el loader de personalización si el link trae ?g=... — un
@@ -3908,7 +4226,7 @@ export default function App() {
             <VerseBanner />
             <CountdownSection />
             <VideoSection />
-            <MoreDetailsHub rsvpName={rsvpName} onRsvpSuccess={setRsvpName} guestName={guestName} guest={guest} />
+            <MoreDetailsHub rsvpResult={rsvpResult} onRsvpSuccess={setRsvpResult} guestName={guestName} guest={guest} />
             <NosotrosSection guest={guest} />
             <MapSection />
             <Footer onAdminClick={() => setAdmin(true)} />
