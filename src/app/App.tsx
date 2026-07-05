@@ -923,7 +923,7 @@ function HeroSection() {
           className="text-[15px] mt-4 italic"
           style={{ fontFamily: SCRIPT, color: "rgba(230,215,195,0.75)" }}
         >
-          "Por tanto, lo que Dios juntó, no lo separe el hombre" — Marcos 10:9 (RVR1960)
+          "Por tanto, lo que Dios juntó, no lo separe el hombre" — Marcos 10:9
         </motion.p>
 
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 2.5 }} className="absolute bottom-10">
@@ -1062,7 +1062,7 @@ function VerseBanner() {
             Todo lo sufre, todo lo cree, todo lo espera, todo lo soporta."
           </p>
           <p className="text-[11px] tracking-[0.4em] uppercase mt-4" style={{ fontFamily: SANS, color: GOLD }}>
-            1 Corintios 13:4-7 ()
+            1 Corintios 13:4-7 
           </p>
         </Reveal>
       </div>
@@ -1163,7 +1163,7 @@ function VideoSection() {
             "Y si alguno prevaleciere contra uno, dos le resistirán; y cordón de tres dobleces no se rompe pronto."
           </p>
           <p className="text-xs tracking-[0.4em] uppercase mt-4" style={{ fontFamily: SANS, color: GOLD }}>
-            Eclesiastés 4:12 ()
+            Eclesiastés 4:12 
           </p>
         </Reveal>
       </div>
