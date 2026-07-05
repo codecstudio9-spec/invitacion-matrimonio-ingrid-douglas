@@ -40,6 +40,41 @@ interface WeddingConfig {
 // real en vez de forzar uno nuevo.
 const WEDDING_CONFIG_ID = "main_config";
 
+// ─── "Es mío" (estilo red social) ──────────────────────────────────────────
+// Sin login real, la única forma honesta de saber "esto lo subí yo" es
+// recordar en este mismo dispositivo qué subió — así que solo quien creó
+// una foto/video/nota ve el botón de eliminar sobre ella.
+const MY_MEDIA_KEY = "my_guest_media_ids";
+const MY_NOTES_KEY = "my_love_notes_ids";
+
+function rememberMine(storageKey: string, id: string) {
+  try {
+    const set = new Set<string>(JSON.parse(localStorage.getItem(storageKey) || "[]"));
+    set.add(id);
+    localStorage.setItem(storageKey, JSON.stringify(Array.from(set)));
+  } catch { /* localStorage no disponible — simplemente no verá el botón de borrar */ }
+}
+
+function readMine(storageKey: string): Set<string> {
+  try {
+    return new Set<string>(JSON.parse(localStorage.getItem(storageKey) || "[]"));
+  } catch {
+    return new Set();
+  }
+}
+
+// El URL público de Supabase Storage trae el bucket y la ruta incrustados:
+// .../storage/v1/object/public/<bucket>/<ruta-del-archivo>
+async function deleteStorageObject(bucket: string, publicUrl: string) {
+  if (!supabase) return;
+  const marker = `/object/public/${bucket}/`;
+  const idx = publicUrl.indexOf(marker);
+  if (idx === -1) return;
+  const path = decodeURIComponent(publicUrl.slice(idx + marker.length));
+  const { error } = await supabase.storage.from(bucket).remove([path]);
+  if (error) console.error("No se pudo borrar el archivo físico:", error);
+}
+
 interface GuestMediaItem {
   id: string;
   guestId: string | null;
@@ -301,6 +336,34 @@ function PreparingInvitationScreen() {
       >
         Preparando tu invitación…
       </motion.p>
+    </div>
+  );
+}
+
+/** Se muestra en vez de toda la invitación cuando el invitado ya avisó que no
+ *  puede asistir — no tiene sentido seguir mostrándole la cuenta regresiva,
+ *  la galería o el RSVP de un evento al que ya dijo que no va. */
+function DeclinedScreen({ name }: { name: string }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center px-8 text-center"
+      style={{ background: "linear-gradient(135deg, #F5EBD9 0%, #FAF6EE 35%, #FFF9F0 65%, #F2EBE0 100%)" }}
+    >
+      <motion.div initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: "spring", damping: 16, stiffness: 200 }}>
+        <CoupleSeal size={56} />
+      </motion.div>
+      <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25, duration: 0.7 }}>
+        <h1 className="mt-8 text-3xl" style={{ fontFamily: SERIF, color: "#3A302A", fontStyle: "italic" }}>
+          Gracias, {name}
+        </h1>
+        <Ornament />
+        <p className="max-w-xs mx-auto text-sm leading-loose" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
+          Lamentamos mucho que no puedas acompañarnos, pero agradecemos de corazón que te tomaras el tiempo de avisarnos con cariño. Te vamos a extrañar ese día.
+        </p>
+        <p className="mt-8 text-2xl" style={{ fontFamily: SCRIPT, color: "#8A6A3A" }}>
+          Ingrid &amp; Douglas
+        </p>
+      </motion.div>
     </div>
   );
 }
@@ -620,11 +683,16 @@ function BeachVideoBackdrop() {
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
       <video
         autoPlay muted loop playsInline
-        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+        preload="auto"
+        poster={IMG.hero}
+        style={{
+          position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover",
+          transform: "translateZ(0)", willChange: "transform",
+        }}
       >
         <source src={VIDEO_FILE} type="video/mp4" />
       </video>
-      {/* Beige tint — keeps the video subtle behind the envelope */}
+      {/* Beige tint — keeps el video sutil detrás del sobre */}
       <div style={{
         position: "absolute", inset: 0,
         background: "linear-gradient(135deg, rgba(245,235,217,0.82) 0%, rgba(250,246,238,0.78) 35%, rgba(255,249,240,0.75) 65%, rgba(242,235,224,0.84) 100%)",
@@ -1189,20 +1257,44 @@ function CountdownSection() {
 // ─── Video Background Section ─────────────────────────────────────────────
 
 function VideoSection() {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  // En Android decodificar un video full-bleed mientras está fuera de vista
+  // (por ejemplo antes de llegar a esta sección scrolleando) es una causa
+  // común de que se sienta menos fluido que en iPhone — lo pausamos cuando
+  // no está a la vista y lo retomamos justo al entrar en pantalla.
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) el.play().catch(() => {});
+        else el.pause();
+      },
+      { threshold: 0.15 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <section className="relative overflow-hidden" style={{ height: "100svh" }}>
       {/* Video background — always muted; pacto.mp3 is the only audio source on the page */}
       <video
-        autoPlay
+        ref={videoRef}
         muted
         loop
         playsInline
+        preload="auto"
+        poster={IMG.hero}
         style={{
           position: "absolute",
           inset: 0,
           width: "100%",
           height: "100%",
           objectFit: "cover",
+          transform: "translateZ(0)",
+          willChange: "transform",
         }}
       >
         <source src={VIDEO_FILE} type="video/mp4" />
@@ -1428,6 +1520,8 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
   const [addFile, setAddFile] = useState<File | null>(null);
   const [adding, setAdding] = useState(false);
   const [uploadFeedback, setUploadFeedback] = useState<"success" | "error" | null>(null);
+  const [myMediaIds, setMyMediaIds] = useState<Set<string>>(() => readMine(MY_MEDIA_KEY));
+  const [deleting, setDeleting] = useState(false);
 
   const scrollerRef = useRef<HTMLDivElement>(null);
   const interactingRef = useRef(false);
@@ -1599,6 +1693,22 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
     setActiveItem(items[(idx + dir + items.length) % items.length]);
   };
 
+  const handleDeleteMine = async (media: GuestMediaItem) => {
+    if (!supabase) return;
+    setDeleting(true);
+    try {
+      await deleteStorageObject(GUEST_MEDIA_BUCKET, media.url);
+      const { error } = await supabase.from("guest_media").delete().eq("id", media.id);
+      if (error) throw error;
+      setCommunityItems((prev) => prev.filter((m) => m.id !== media.id));
+      setActiveItem(null);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!addFile || !supabase) return;
@@ -1609,15 +1719,19 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
       const { error: uploadError } = await supabase.storage.from(GUEST_MEDIA_BUCKET).upload(path, addFile);
       if (uploadError) throw uploadError;
       const { data: urlData } = supabase.storage.from(GUEST_MEDIA_BUCKET).getPublicUrl(path);
-      const { error: insertError } = await supabase.from("guest_media").insert({
+      const { data: inserted, error: insertError } = await supabase.from("guest_media").insert({
         name: addName.trim() || "Invitado",
         folder: GALLERY_UPLOAD_FOLDER,
         url: urlData.publicUrl,
         type,
         likes: 0,
         guest_id: guest?.id ?? null,
-      });
+      }).select().single();
       if (insertError) throw insertError;
+      if (inserted) {
+        rememberMine(MY_MEDIA_KEY, inserted.id);
+        setMyMediaIds(readMine(MY_MEDIA_KEY));
+      }
       setAddFile(null);
       setAddOpen(false);
       await fetchCommunity();
@@ -1807,19 +1921,31 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
               </div>
 
               <div className="p-5">
-                <button
-                  onClick={() => toggleLike(activeItem)}
-                  className="flex items-center gap-2 mb-5 transition-transform active:scale-95"
-                >
-                  <Heart
-                    style={{ width: 22, height: 22 }}
-                    fill={likedByMe.has(activeItem.key) ? GOLD : "none"}
-                    stroke={likedByMe.has(activeItem.key) ? GOLD : TAN}
-                  />
-                  <span className="text-sm" style={{ fontFamily: SANS, color: BROWN }}>
-                    {itemLikes(activeItem)} me gusta
-                  </span>
-                </button>
+                <div className="flex items-center justify-between gap-2 mb-5">
+                  <button
+                    onClick={() => toggleLike(activeItem)}
+                    className="flex items-center gap-2 transition-transform active:scale-95"
+                  >
+                    <Heart
+                      style={{ width: 22, height: 22 }}
+                      fill={likedByMe.has(activeItem.key) ? GOLD : "none"}
+                      stroke={likedByMe.has(activeItem.key) ? GOLD : TAN}
+                    />
+                    <span className="text-sm" style={{ fontFamily: SANS, color: BROWN }}>
+                      {itemLikes(activeItem)} me gusta
+                    </span>
+                  </button>
+                  {activeItem.kind === "community" && myMediaIds.has(activeItem.media.id) && (
+                    <button
+                      onClick={() => handleDeleteMine(activeItem.media)}
+                      disabled={deleting}
+                      className="text-[10px] tracking-widest uppercase flex-shrink-0 disabled:opacity-50"
+                      style={{ fontFamily: SANS, color: "#C4604A" }}
+                    >
+                      {deleting ? "Eliminando…" : "Eliminar"}
+                    </button>
+                  )}
+                </div>
 
                 {itemComments(activeItem).length > 0 && (
                   <div className="space-y-3 mb-5">
@@ -1880,6 +2006,8 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
   const [comments, setComments] = useState<GuestMediaComment[]>([]);
   const [commentForm, setCommentForm] = useState({ name: "", message: "" });
   const [uploadFeedback, setUploadFeedback] = useState<"success" | "error" | null>(null);
+  const [myMediaIds, setMyMediaIds] = useState<Set<string>>(() => readMine(MY_MEDIA_KEY));
+  const [deleting, setDeleting] = useState(false);
   useBodyScrollLock(!!activeItem);
 
   const fetchItems = async () => {
@@ -1965,15 +2093,19 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
       const { error: uploadError } = await supabase.storage.from(GUEST_MEDIA_BUCKET).upload(path, file);
       if (uploadError) throw uploadError;
       const { data: urlData } = supabase.storage.from(GUEST_MEDIA_BUCKET).getPublicUrl(path);
-      const { error: insertError } = await supabase.from("guest_media").insert({
+      const { data: inserted, error: insertError } = await supabase.from("guest_media").insert({
         name: name.trim() || "Invitado",
         folder: targetFolder,
         url: urlData.publicUrl,
         type,
         likes: 0,
         guest_id: guest?.id ?? null,
-      });
+      }).select().single();
       if (insertError) throw insertError;
+      if (inserted) {
+        rememberMine(MY_MEDIA_KEY, inserted.id);
+        setMyMediaIds(readMine(MY_MEDIA_KEY));
+      }
       setFile(null);
       setNewFolder("");
       setActiveFolder(targetFolder);
@@ -1996,6 +2128,22 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
     if (isLiked) next.delete(id); else next.add(id);
     setLikedByMe(next);
     localStorage.setItem("guest_media_liked", JSON.stringify(Array.from(next)));
+  };
+
+  const handleDeleteMine = async (item: GuestMediaItem) => {
+    if (!supabase) return;
+    setDeleting(true);
+    try {
+      await deleteStorageObject(GUEST_MEDIA_BUCKET, item.url);
+      const { error } = await supabase.from("guest_media").delete().eq("id", item.id);
+      if (error) throw error;
+      setItems((prev) => prev.filter((i) => i.id !== item.id));
+      setActiveItem(null);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const visible = activeFolder === "Todas" ? items : items.filter((i) => i.folder === activeFolder);
@@ -2183,9 +2331,21 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
                     />
                     <span className="text-sm" style={{ fontFamily: SANS, color: BROWN }}>{activeItem.likes} me gusta</span>
                   </button>
-                  <p className="text-[10px] tracking-widest uppercase mb-5" style={{ fontFamily: SANS, color: GOLD }}>
-                    Subido por {activeItem.name}
-                  </p>
+                  <div className="flex items-center justify-between gap-2 mb-5">
+                    <p className="text-[10px] tracking-widest uppercase" style={{ fontFamily: SANS, color: GOLD }}>
+                      Subido por {activeItem.name}
+                    </p>
+                    {myMediaIds.has(activeItem.id) && (
+                      <button
+                        onClick={() => handleDeleteMine(activeItem)}
+                        disabled={deleting}
+                        className="text-[10px] tracking-widest uppercase flex-shrink-0 disabled:opacity-50"
+                        style={{ fontFamily: SANS, color: "#C4604A" }}
+                      >
+                        {deleting ? "Eliminando…" : "Eliminar"}
+                      </button>
+                    )}
+                  </div>
 
                   {comments.filter((c) => c.mediaId === activeItem.id).length > 0 && (
                     <div className="space-y-3 mb-5">
@@ -2678,6 +2838,8 @@ function LoveNotesContent({ guest }: { guest: GuestRecord | null }) {
   const [form, setForm] = useState({ name: "", note: "" });
   const [loading, setLoading] = useState(false);
   const [justSent, setJustSent] = useState(false);
+  const [myNoteIds, setMyNoteIds] = useState<Set<string>>(() => readMine(MY_NOTES_KEY));
+  const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
 
   // Muro en vivo: cualquiera con la invitación abierta ve aparecer notas
   // nuevas al instante, sin recargar.
@@ -2736,12 +2898,16 @@ function LoveNotesContent({ guest }: { guest: GuestRecord | null }) {
     setLoading(true);
     try {
       if (supabaseReady && supabase) {
-        const { error } = await supabase.from("love_notes").insert({
+        const { data: inserted, error } = await supabase.from("love_notes").insert({
           guest_id: guest?.id ?? null,
           name: form.name.trim(),
           note: form.note.trim(),
-        });
+        }).select().single();
         if (error) throw error;
+        if (inserted) {
+          rememberMine(MY_NOTES_KEY, inserted.id);
+          setMyNoteIds(readMine(MY_NOTES_KEY));
+        }
         await fetchNotes();
       }
       setForm({ name: "", note: "" });
@@ -2751,6 +2917,20 @@ function LoveNotesContent({ guest }: { guest: GuestRecord | null }) {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteNote = async (id: string) => {
+    if (!supabase) return;
+    setDeletingNoteId(id);
+    try {
+      const { error } = await supabase.from("love_notes").delete().eq("id", id);
+      if (error) throw error;
+      await fetchNotes();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDeletingNoteId(null);
     }
   };
 
@@ -2786,9 +2966,21 @@ function LoveNotesContent({ guest }: { guest: GuestRecord | null }) {
               <p className="text-sm leading-relaxed mb-3" style={{ fontFamily: SERIF, color: BROWN, fontStyle: "italic" }}>
                 "{n.note}"
               </p>
-              <p className="text-[10px] tracking-widest uppercase" style={{ fontFamily: SANS, color: GOLD }}>
-                — {n.name}
-              </p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[10px] tracking-widest uppercase" style={{ fontFamily: SANS, color: GOLD }}>
+                  — {n.name}
+                </p>
+                {myNoteIds.has(n.id) && (
+                  <button
+                    onClick={() => handleDeleteNote(n.id)}
+                    disabled={deletingNoteId === n.id}
+                    className="text-[9px] tracking-widest uppercase flex-shrink-0 disabled:opacity-50"
+                    style={{ fontFamily: SANS, color: "#C4604A" }}
+                  >
+                    {deletingNoteId === n.id ? "…" : "Eliminar"}
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -3104,8 +3296,8 @@ function ThankYouContent({ result }: { result: RsvpResult }) {
 
   const whatsappHref = (() => {
     const msg = attending
-      ? `Hola! Soy ${name} 🎉 Quiero confirmar mi asistencia a la boda de Ingrid & Douglas${wantsLodging ? " (y también reservé un cupo de hospedaje)" : ""}. Aquí les cuento los detalles de mis tiquetes:`
-      : `Hola! Soy ${name}, les escribo sobre la boda de Ingrid & Douglas.`;
+      ? `Hola chicos! Soy ${name}. ¡Claro que confirmo mi asistencia! Ya mismo voy a cuadrar todo para que nos veamos allá. ¡Qué emoción tan grande ser parte de este sueño! 🎉${wantsLodging ? " También reservé mi cupo de hospedaje." : ""} Les cuento los detalles de mis tiquetes:`
+      : `Hola chicos! Soy ${name}, les escribo sobre la boda.`;
     return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(msg)}`;
   })();
 
@@ -3491,18 +3683,6 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
     onDelete?: () => void;
   };
   const [detail, setDetail] = useState<DetailModalState | null>(null);
-
-  // El URL público de Supabase Storage trae el bucket y la ruta incrustados:
-  // .../storage/v1/object/public/<bucket>/<ruta-del-archivo>
-  const deleteStorageObject = async (bucket: string, publicUrl: string) => {
-    if (!supabase) return;
-    const marker = `/object/public/${bucket}/`;
-    const idx = publicUrl.indexOf(marker);
-    if (idx === -1) return;
-    const path = decodeURIComponent(publicUrl.slice(idx + marker.length));
-    const { error } = await supabase.storage.from(bucket).remove([path]);
-    if (error) console.error("No se pudo borrar el archivo físico:", error);
-  };
 
   const deleteRow = async (table: string, id: string, mediaUrl?: string | null) => {
     if (!supabase) return;
@@ -4272,6 +4452,12 @@ export default function App() {
   const [rsvpResult, setRsvpResult] = useState<RsvpResult | null>(null);
   const [guestName, setGuestName] = useState<string>("");
   const [guest, setGuest] = useState<GuestRecord | null>(null);
+  const [declined, setDeclined] = useState(false);
+
+  const handleRsvpSuccess = (result: RsvpResult) => {
+    setRsvpResult(result);
+    if (!result.attending) setDeclined(true);
+  };
   // Solo mostramos el loader de personalización si el link trae ?g=... — un
   // link plano (o ?to=Nombre) entra directo, sin espera de red de por medio.
   const [guestLoading, setGuestLoading] = useState<boolean>(
@@ -4325,6 +4511,19 @@ export default function App() {
           passes: data.pases,
         });
         setGuestName(data.nombre);
+
+        // Si este invitado ya había avisado antes que no asistirá (desde
+        // cualquier dispositivo), no le mostramos la invitación completa de
+        // nuevo — directo a la pantalla de agradecimiento.
+        supabase
+          .from("rsvps")
+          .select("id")
+          .eq("guest_id", data.id)
+          .eq("attending", false)
+          .limit(1)
+          .then(({ data: declinedRows }) => {
+            if (declinedRows && declinedRows.length > 0) setDeclined(true);
+          });
       })
       .finally(() => {
         window.clearTimeout(safetyTimeout);
@@ -4333,6 +4532,7 @@ export default function App() {
   }, []);
 
   if (guestLoading) return <PreparingInvitationScreen />;
+  if (declined) return <DeclinedScreen name={rsvpResult?.name || guestName || guest?.displayName || "de todas formas"} />;
 
   return (
     <>
@@ -4357,7 +4557,7 @@ export default function App() {
             <VerseBanner />
             <CountdownSection />
             <VideoSection />
-            <MoreDetailsHub rsvpResult={rsvpResult} onRsvpSuccess={setRsvpResult} guestName={guestName} guest={guest} />
+            <MoreDetailsHub rsvpResult={rsvpResult} onRsvpSuccess={handleRsvpSuccess} guestName={guestName} guest={guest} />
             <NosotrosSection guest={guest} />
             <MapSection />
             <Footer onAdminClick={() => setAdmin(true)} />
