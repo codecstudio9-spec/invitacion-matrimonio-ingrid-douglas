@@ -1012,7 +1012,7 @@ function DetailsSection() {
               Nuestro Agradecimiento
             </h3>
             <p className="text-sm leading-relaxed" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
-              No hay palabras suficientes para expresar nuestra gratitud por ser parte de este hermoso sueño. 
+              No hay palabras suficientes para expresar nuestra gratitud en que ustedes sean parte de este hermoso sueño. 
               Su presencia y amor significan el mundo para nosotros. Gracias por acompañarnos en este viaje extraordinario 
               y por celebrar con nosotros uno de los momentos más importantes de nuestras vidas.
             </p>
@@ -1062,7 +1062,7 @@ function VerseBanner() {
             Todo lo sufre, todo lo cree, todo lo espera, todo lo soporta."
           </p>
           <p className="text-[11px] tracking-[0.4em] uppercase mt-4" style={{ fontFamily: SANS, color: GOLD }}>
-            1 Corintios 13:4-7 (RVR1960)
+            1 Corintios 13:4-7 ()
           </p>
         </Reveal>
       </div>
@@ -1114,7 +1114,7 @@ function CountdownSection() {
 
         <Reveal delay={0.5}>
           <p className="mt-8 text-sm" style={{ fontFamily: SERIF, color: TAN, fontStyle: "italic" }}>
-            5 de diciembre · 4:30 PM · Playa Francés, Coveñas
+            5 de diciembre · 4:30 PM · Playa Francés, Tolú, Sucre, Colombia
           </p>
         </Reveal>
       </div>
@@ -1163,7 +1163,7 @@ function VideoSection() {
             "Y si alguno prevaleciere contra uno, dos le resistirán; y cordón de tres dobleces no se rompe pronto."
           </p>
           <p className="text-xs tracking-[0.4em] uppercase mt-4" style={{ fontFamily: SANS, color: GOLD }}>
-            Eclesiastés 4:12 (RVR1960)
+            Eclesiastés 4:12 ()
           </p>
         </Reveal>
       </div>
@@ -1179,7 +1179,7 @@ function TimelineContent() {
     { time: "6:00 PM", event: "Cóctel", desc: "Con familiares y amigos" },
     { time: "7:30 PM", event: "Recepción", desc: "Brindis y bienvenida" },
     { time: "8:30 PM", event: "Cena", desc: "Deliciosa cena servida" },
-    { time: "9:30 PM", event: "Fiesta", desc: "A celebrar" },
+    { time: "9:30 PM", event: "Celebración", desc: "A celebrar" },
     { time: "Hasta el amanecer", event: "Sorpresas", desc: "Momentos inolvidables" },
   ];
 
@@ -1248,7 +1248,7 @@ function DressCodeContent() {
     <div className="max-w-2xl mx-auto">
       <Ornament />
       <p className="text-sm leading-relaxed max-w-sm mx-auto mt-6 text-center" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
-        Acompáñanos vistiendo tonos claros inspirados en la playa. Una paleta elegante y fresca para este hermoso día.
+        Acompáñanos usando prendas con tonos claros inspirados en la playa. Una paleta elegante y fresca para este hermoso día.
       </p>
 
       {/* Color palette */}
@@ -1779,7 +1779,7 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
 
             {visible.length === 0 ? (
               <p className="text-center text-sm py-10" style={{ fontFamily: SERIF, color: TAN, fontStyle: "italic" }}>
-                Aún no hay nada en esta carpeta — ¡sé el primero en compartir!
+              ¡Sé el primero en compartir!
               </p>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
@@ -3335,7 +3335,7 @@ function Footer({ onAdminClick }: { onAdminClick: () => void }) {
         Ingrid & Douglas
       </p>
       <p className="text-[10px] tracking-[0.45em] uppercase mb-8" style={{ fontFamily: SANS, color: "#8A7A64" }}>
-        5 · XII · 2026 · Playa Francés · Coveñas
+        5 · XII · 2026 · Playa Francés · Tolú, Sucre, Colombia
       </p>
       <Ornament />
       <p className="text-xs mt-6" style={{ fontFamily: SANS, color: "#6A5A48", fontWeight: 300 }}>
