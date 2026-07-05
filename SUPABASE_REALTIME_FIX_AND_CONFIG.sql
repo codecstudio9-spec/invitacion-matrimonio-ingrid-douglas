@@ -33,16 +33,23 @@ alter table public.rsvps add column if not exists wants_lodging boolean not null
 -- ═══════════════════════════════════════════════════════════════════
 -- 3. Configuración editable de la boda: precio por persona, costo por
 --    noche de hospedaje y cupos totales de hospedaje. Una sola fila.
+--
+-- NOTA: esta tabla ya existía en tu Supabase (creada en una ronda anterior)
+-- con id de texto "main_config" y columnas en español — el código de
+-- App.tsx habla exactamente este esquema (WEDDING_CONFIG_ID = "main_config",
+-- columnas costo_por_persona / costo_noche_hospedaje /
+-- cupos_hospedaje_totales). Este bloque solo existe para que el script siga
+-- siendo completo si alguna vez se corre en un proyecto nuevo desde cero.
 -- ═══════════════════════════════════════════════════════════════════
 create table if not exists public.wedding_config (
-  id int primary key default 1,
-  price_per_person numeric not null default 0,
-  lodging_price_per_night numeric not null default 350000,
-  lodging_total_slots int not null default 10,
-  constraint wedding_config_single_row check (id = 1)
+  id text primary key default 'main_config',
+  costo_por_persona numeric not null default 0,
+  costo_noche_hospedaje numeric not null default 350000,
+  cupos_hospedaje_totales int not null default 10,
+  constraint wedding_config_single_row check (id = 'main_config')
 );
 
-insert into public.wedding_config (id) values (1)
+insert into public.wedding_config (id) values ('main_config')
   on conflict (id) do nothing;
 
 alter table public.wedding_config enable row level security;

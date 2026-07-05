@@ -34,6 +34,11 @@ interface WeddingConfig {
   lodgingTotalSlots: number;
 }
 
+// La fila única de configuración ya existía en Supabase con este id de texto
+// (no "1" como número) y columnas en español — el código habla ese esquema
+// real en vez de forzar uno nuevo.
+const WEDDING_CONFIG_ID = "main_config";
+
 interface GuestMediaItem {
   id: string;
   guestId: string | null;
@@ -2783,9 +2788,9 @@ function RSVPContent({ onSuccess, initialName = "", guest }: {
   useEffect(() => {
     if (!supabaseReady || !supabase) return;
     const fetchConfig = async () => {
-      const { data, error } = await supabase.from("wedding_config").select("*").eq("id", 1).single();
+      const { data, error } = await supabase.from("wedding_config").select("*").eq("id", WEDDING_CONFIG_ID).single();
       if (error) { console.error(error); return; }
-      setLodgingConfig({ pricePerNight: data.lodging_price_per_night, totalSlots: data.lodging_total_slots });
+      setLodgingConfig({ pricePerNight: data.costo_noche_hospedaje, totalSlots: data.cupos_hospedaje_totales });
     };
     fetchConfig();
     const channel = supabase
@@ -3369,12 +3374,12 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     if (!supabaseReady || !supabase) return;
     const fetchConfig = async () => {
-      const { data, error } = await supabase.from("wedding_config").select("*").eq("id", 1).single();
+      const { data, error } = await supabase.from("wedding_config").select("*").eq("id", WEDDING_CONFIG_ID).single();
       if (error) { console.error(error); return; }
       const next: WeddingConfig = {
-        pricePerPerson: data.price_per_person ?? 0,
-        lodgingPricePerNight: data.lodging_price_per_night ?? 0,
-        lodgingTotalSlots: data.lodging_total_slots ?? 0,
+        pricePerPerson: data.costo_por_persona ?? 0,
+        lodgingPricePerNight: data.costo_noche_hospedaje ?? 0,
+        lodgingTotalSlots: data.cupos_hospedaje_totales ?? 0,
       };
       setConfig(next);
       setConfigDraft({
@@ -3396,10 +3401,10 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
     setSavingConfig(true);
     try {
       const { error } = await supabase.from("wedding_config").update({
-        price_per_person: Number(configDraft.pricePerPerson) || 0,
-        lodging_price_per_night: Number(configDraft.lodgingPricePerNight) || 0,
-        lodging_total_slots: Number(configDraft.lodgingTotalSlots) || 0,
-      }).eq("id", 1);
+        costo_por_persona: Number(configDraft.pricePerPerson) || 0,
+        costo_noche_hospedaje: Number(configDraft.lodgingPricePerNight) || 0,
+        cupos_hospedaje_totales: Number(configDraft.lodgingTotalSlots) || 0,
+      }).eq("id", WEDDING_CONFIG_ID);
       if (error) throw error;
       setConfigSaved(true);
       setTimeout(() => setConfigSaved(false), 2000);
