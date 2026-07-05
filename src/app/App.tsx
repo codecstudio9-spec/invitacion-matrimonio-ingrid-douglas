@@ -75,6 +75,17 @@ async function deleteStorageObject(bucket: string, publicUrl: string) {
   if (error) console.error("No se pudo borrar el archivo físico:", error);
 }
 
+// El panel admin y el muro de fotos (GuestMediaContent/GalleryContent) están
+// montados al mismo tiempo en la misma pestaña cuando el admin está abierto
+// encima de la invitación — cada uno tiene su propia copia del estado, así
+// que esperar solo al round-trip de Realtime para que se vean sincronizados
+// es más lento de lo necesario. Este evento de window avisa a todos los que
+// estén escuchando, en la misma pestaña, al instante.
+const GUEST_MEDIA_CHANGED_EVENT = "guest-media-changed";
+function broadcastGuestMediaChanged() {
+  window.dispatchEvent(new Event(GUEST_MEDIA_CHANGED_EVENT));
+}
+
 interface GuestMediaItem {
   id: string;
   guestId: string | null;
@@ -1589,7 +1600,11 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
       .channel("gallery_community_changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "guest_media" }, fetchCommunity)
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    window.addEventListener(GUEST_MEDIA_CHANGED_EVENT, fetchCommunity);
+    return () => {
+      supabase.removeChannel(channel);
+      window.removeEventListener(GUEST_MEDIA_CHANGED_EVENT, fetchCommunity);
+    };
   }, []);
 
   const fetchGalleryComments = async () => {
@@ -1702,6 +1717,7 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
       if (error) throw error;
       setCommunityItems((prev) => prev.filter((m) => m.id !== media.id));
       setActiveItem(null);
+      broadcastGuestMediaChanged();
     } catch (err) {
       console.error(err);
     } finally {
@@ -1736,6 +1752,7 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
       setAddOpen(false);
       await fetchCommunity();
       setUploadFeedback("success");
+      broadcastGuestMediaChanged();
     } catch (err) {
       console.error(err);
       setUploadFeedback("error");
@@ -2038,7 +2055,11 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
       .on("postgres_changes", { event: "*", schema: "public", table: "guest_media" }, fetchItems)
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    window.addEventListener(GUEST_MEDIA_CHANGED_EVENT, fetchItems);
+    return () => {
+      supabase.removeChannel(channel);
+      window.removeEventListener(GUEST_MEDIA_CHANGED_EVENT, fetchItems);
+    };
   }, []);
 
   const fetchComments = async () => {
@@ -2111,6 +2132,7 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
       setActiveFolder(targetFolder);
       await fetchItems();
       setUploadFeedback("success");
+      broadcastGuestMediaChanged();
     } catch (err) {
       console.error(err);
       setUploadFeedback("error");
@@ -2139,6 +2161,7 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
       if (error) throw error;
       setItems((prev) => prev.filter((i) => i.id !== item.id));
       setActiveItem(null);
+      broadcastGuestMediaChanged();
     } catch (err) {
       console.error(err);
     } finally {
@@ -3535,6 +3558,100 @@ function AdminDetailModal({ title, subtitle, fields, mediaUrl, mediaType, onClos
   );
 }
 
+interface StatListColumn {
+  key: string;
+  label: string;
+}
+
+/** Al tocar una tarjeta de estadística, esto muestra el detalle completo en
+ *  una tabla con un botón para descargarlo como CSV (para pasárselo a la
+ *  banquetera o los proveedores). */
+function StatListModal({ title, columns, rows, onClose }: {
+  title: string;
+  columns: StatListColumn[];
+  rows: Record<string, string>[];
+  onClose: () => void;
+}) {
+  useBodyScrollLock(true);
+
+  const downloadCSV = () => {
+    const escape = (v: string) => `"${(v ?? "").replace(/"/g, '""')}"`;
+    const header = columns.map((c) => escape(c.label)).join(",");
+    const body = rows.map((r) => columns.map((c) => escape(r[c.key] ?? "")).join(",")).join("\n");
+    const blob = new Blob([`${header}\n${body}`], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${title.toLowerCase().replace(/[^a-z0-9]+/g, "_")}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  return createPortal(
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[80] flex items-center justify-center p-4"
+        style={{ background: "rgba(20,14,6,0.82)" }}
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ opacity: 0, scale: 0.94, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }}
+          transition={{ duration: 0.25 }}
+          onClick={(e) => e.stopPropagation()}
+          className="relative w-full max-w-2xl max-h-[85vh] flex flex-col rounded-lg"
+          style={{ background: "#FFFBF2" }}
+        >
+          <div className="flex items-center justify-between gap-3 p-5" style={{ borderBottom: `1px solid rgba(196,168,130,0.2)` }}>
+            <h3 className="text-lg" style={{ fontFamily: SERIF, color: BROWN }}>{title} ({rows.length})</h3>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                onClick={downloadCSV}
+                disabled={rows.length === 0}
+                className="px-3 py-2 text-[10px] tracking-widest uppercase transition-all disabled:opacity-40"
+                style={{ fontFamily: SANS, background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DARK})`, color: CREAM, borderRadius: 2 }}
+              >
+                Descargar CSV
+              </button>
+              <button onClick={onClose} aria-label="Cerrar" className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.06)" }}>
+                <X style={{ width: 15, height: 15, color: BROWN }} />
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-auto p-5">
+            {rows.length === 0 ? (
+              <p className="text-sm italic text-center py-8" style={{ fontFamily: SERIF, color: TAN }}>No hay datos todavía.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr style={{ borderBottom: `1px solid rgba(196,168,130,0.25)` }}>
+                    {columns.map((c) => (
+                      <th key={c.key} className="px-3 py-2 text-left text-[10px] tracking-widest uppercase" style={{ fontFamily: SANS, color: GOLD }}>{c.label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r, i) => (
+                    <tr key={i} style={{ borderBottom: `1px solid rgba(196,168,130,0.1)`, background: i % 2 === 0 ? "#FAF8F3" : "transparent" }}>
+                      {columns.map((c) => (
+                        <td key={c.key} className="px-3 py-2" style={{ fontFamily: SANS, color: BROWN }}>{r[c.key] || "—"}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>,
+    document.body
+  );
+}
+
 function AdminDashboard({ onClose }: { onClose: () => void }) {
   const [authed, setAuthed] = useState(false);
   const [pwd, setPwd] = useState("");
@@ -3617,7 +3734,11 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
       .channel("admin_guest_media_changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "guest_media" }, fetchMedia)
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    window.addEventListener(GUEST_MEDIA_CHANGED_EVENT, fetchMedia);
+    return () => {
+      supabase.removeChannel(channel);
+      window.removeEventListener(GUEST_MEDIA_CHANGED_EVENT, fetchMedia);
+    };
   }, []);
 
   const [guests, setGuests] = useState<GuestRecord[]>([]);
@@ -3683,6 +3804,7 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
     onDelete?: () => void;
   };
   const [detail, setDetail] = useState<DetailModalState | null>(null);
+  const [listModal, setListModal] = useState<{ title: string; columns: StatListColumn[]; rows: Record<string, string>[] } | null>(null);
 
   const deleteRow = async (table: string, id: string, mediaUrl?: string | null) => {
     if (!supabase) return;
@@ -3694,7 +3816,7 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
     // pantalla al instante, sin esperar a que llegue el evento por websocket.
     if (table === "rsvps") setEntries((prev) => prev.filter((e) => e.id !== id));
     if (table === "love_notes") setNotes((prev) => prev.filter((n) => n.id !== id));
-    if (table === "guest_media") setGuestMediaItems((prev) => prev.filter((m) => m.id !== id));
+    if (table === "guest_media") { setGuestMediaItems((prev) => prev.filter((m) => m.id !== id)); broadcastGuestMediaChanged(); }
     if (table === "video_greetings") setVideoGreetings((prev) => prev.filter((v) => v.id !== id));
     setDetail(null);
   };
@@ -3747,21 +3869,109 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
   });
 
   const guestSideById = new Map(guests.map((g) => [g.id, g.side] as const));
-  const confirmedIngrid = entries.filter((e) => e.attending && e.guestId && guestSideById.get(e.guestId) === "ingrid").length;
-  const confirmedDouglas = entries.filter((e) => e.attending && e.guestId && guestSideById.get(e.guestId) === "douglas").length;
+
+  // "Invitados totales" son personas (sillas/platos potenciales), no filas de
+  // la tabla — 22 tarjetas de invitación suman 43 pases reales.
+  const totalPasesInvitados = guests.reduce((sum, g) => sum + g.passes, 0);
+
+  // Confirmados por lado: personas reales que dijeron que sí (attendee_count),
+  // no cantidad de formularios enviados.
+  const confirmedIngrid = entries
+    .filter((e) => e.attending && e.guestId && guestSideById.get(e.guestId) === "ingrid")
+    .reduce((sum, e) => sum + (e.attendeeCount ?? 1), 0);
+  const confirmedDouglas = entries
+    .filter((e) => e.attending && e.guestId && guestSideById.get(e.guestId) === "douglas")
+    .reduce((sum, e) => sum + (e.attendeeCount ?? 1), 0);
+
   const lodgingUsed = entries.filter((e) => e.wantsLodging).reduce((sum, e) => sum + (e.lodgingSlots || 1), 0);
   const lodgingRemaining = config ? Math.max(0, config.lodgingTotalSlots - lodgingUsed) : null;
-  const confirmedAttendeeTotal = entries.filter((e) => e.attending).reduce((sum, e) => sum + (e.attendeeCount ?? 1), 0);
-  const budgetFromGuests = config ? confirmedAttendeeTotal * config.pricePerPerson : 0;
+
+  // Presupuesto del banquete — regla de las 7 personas fijas (Ingrid, Douglas,
+  // Mariana, Sebastian, Emanuel, Pastor y Pastora). Sebastian, Emanuel y
+  // Pastor/Pastora YA tienen su propia tarjeta con pase en el grupo Douglas,
+  // así que si llegan a confirmar por el formulario normal, se excluyen de la
+  // suma de externos para no contar su plato dos veces — el fijo de 7 ya los
+  // cubre a todos, hayan confirmado o no.
+  const FIXED_GUEST_COUNT = 7;
+  const FIXED_EXCLUDE_SLUGS = new Set(["sebas", "manu", "pastor-y-pastora"]);
+  const excludedGuestIds = new Set(guests.filter((g) => FIXED_EXCLUDE_SLUGS.has(g.slug)).map((g) => g.id));
+  const confirmedExternalTotal = entries
+    .filter((e) => e.attending && !(e.guestId && excludedGuestIds.has(e.guestId)))
+    .reduce((sum, e) => sum + (e.attendeeCount ?? 1), 0);
+  const totalBanquetePersonas = confirmedExternalTotal + FIXED_GUEST_COUNT;
+
+  const budgetFromGuests = config ? totalBanquetePersonas * config.pricePerPerson : 0;
   const budgetFromLodging = config ? lodgingUsed * config.lodgingPricePerNight : 0;
   const budgetTotal = budgetFromGuests + budgetFromLodging;
 
   const stats = {
-    total:     guests.length || entries.length,
+    total:     totalPasesInvitados,
     confirmed: entries.filter((e) => e.attending).length,
     declined:  entries.filter((e) => !e.attending).length,
     notes:     notes.length,
     videos:    videoGreetings.length,
+  };
+
+  const openGuestsListModal = () => {
+    setListModal({
+      title: "Invitados totales",
+      columns: [
+        { key: "nombre", label: "Invitación" },
+        { key: "lado", label: "Lado" },
+        { key: "pases", label: "Pases" },
+        { key: "slug", label: "Slug" },
+      ],
+      rows: guests.map((g) => ({
+        nombre: g.displayName, lado: g.side === "ingrid" ? "Ingrid" : "Douglas", pases: String(g.passes), slug: g.slug,
+      })),
+    });
+  };
+
+  const openConfirmedListModal = (side: "ingrid" | "douglas") => {
+    const rows = entries
+      .filter((e) => e.attending && e.guestId && guestSideById.get(e.guestId) === side)
+      .map((e) => ({
+        nombre: e.name,
+        asistentes: String(e.attendeeCount ?? 1),
+        cancion: e.songRequest || "",
+        hospedaje: e.wantsLodging ? "Sí" : "No",
+        telefono: e.phone || "",
+      }));
+    setListModal({
+      title: `Confirmados ${side === "ingrid" ? "Ingrid" : "Douglas"}`,
+      columns: [
+        { key: "nombre", label: "Nombre" },
+        { key: "asistentes", label: "Asistentes" },
+        { key: "cancion", label: "Canción" },
+        { key: "hospedaje", label: "Hospedaje" },
+        { key: "telefono", label: "Teléfono" },
+      ],
+      rows,
+    });
+  };
+
+  const openLodgingListModal = () => {
+    const rows = entries.filter((e) => e.wantsLodging).map((e) => ({
+      nombre: e.name, cupos: String(e.lodgingSlots || 1), telefono: e.phone || "",
+    }));
+    setListModal({
+      title: "Hospedajes reservados",
+      columns: [
+        { key: "nombre", label: "Nombre" },
+        { key: "cupos", label: "Cupos" },
+        { key: "telefono", label: "Teléfono" },
+      ],
+      rows,
+    });
+  };
+
+  const openDeclinedListModal = () => {
+    const rows = entries.filter((e) => !e.attending).map((e) => ({ nombre: e.name, telefono: e.phone || "" }));
+    setListModal({
+      title: "Inasistencias",
+      columns: [{ key: "nombre", label: "Nombre" }, { key: "telefono", label: "Teléfono" }],
+      rows,
+    });
   };
 
   if (!authed) {
@@ -3948,34 +4158,45 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        {/* Stats */}
+        {/* Stats — clic en cada tarjeta abre el detalle con exportar CSV */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-3">
           {[
-            { label: "Invitados totales",  value: stats.total,       Icon: Users },
-            { label: "Confirmados Ingrid", value: confirmedIngrid,   Icon: Check },
-            { label: "Confirmados Douglas",value: confirmedDouglas,  Icon: Check },
-            { label: "Inasistencias",      value: stats.declined,    Icon: X },
-            { label: "Cupos hospedaje",    value: lodgingRemaining ?? "—", Icon: Home },
-          ].map(({ label, value, Icon }) => (
-            <div key={label} className="p-4" style={{ background: CREAM, border: `1px solid rgba(196,168,130,0.22)`, borderRadius: 2 }}>
+            { label: "Invitados totales",  value: stats.total,       Icon: Users, onClick: openGuestsListModal },
+            { label: "Confirmados Ingrid", value: confirmedIngrid,   Icon: Check, onClick: () => openConfirmedListModal("ingrid") },
+            { label: "Confirmados Douglas",value: confirmedDouglas,  Icon: Check, onClick: () => openConfirmedListModal("douglas") },
+            { label: "Inasistencias",      value: stats.declined,    Icon: X, onClick: openDeclinedListModal },
+            { label: "Cupos hospedaje",    value: lodgingRemaining ?? "—", Icon: Home, onClick: openLodgingListModal },
+          ].map(({ label, value, Icon, onClick }) => (
+            <button
+              key={label}
+              onClick={onClick}
+              className="text-left p-4 transition-transform active:scale-[0.97]"
+              style={{ background: CREAM, border: `1px solid rgba(196,168,130,0.22)`, borderRadius: 2 }}
+            >
               <Icon style={{ width: 15, height: 15, color: GOLD, marginBottom: 8 }} />
               <div className="text-3xl mb-0.5" style={{ fontFamily: SERIF, color: BROWN }}>{value}</div>
               <div className="text-[10px] tracking-widest uppercase" style={{ fontFamily: SANS, color: TAN }}>{label}</div>
-            </div>
+            </button>
           ))}
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-8">
           {[
-            { label: "Notas amor",  value: stats.notes,     Icon: Heart },
-            { label: "Videos",      value: stats.videos,    Icon: Video },
-            { label: "Hospedajes reservados", value: lodgingUsed, Icon: Home },
-          ].map(({ label, value, Icon }) => (
-            <div key={label} className="p-4" style={{ background: CREAM, border: `1px solid rgba(196,168,130,0.22)`, borderRadius: 2 }}>
+            { label: "Notas amor",  value: stats.notes,     Icon: Heart, onClick: undefined },
+            { label: "Videos",      value: stats.videos,    Icon: Video, onClick: undefined },
+            { label: "Hospedajes reservados", value: lodgingUsed, Icon: Home, onClick: openLodgingListModal },
+          ].map(({ label, value, Icon, onClick }) => (
+            <button
+              key={label}
+              onClick={onClick}
+              disabled={!onClick}
+              className="text-left p-4 transition-transform active:scale-[0.97] disabled:cursor-default"
+              style={{ background: CREAM, border: `1px solid rgba(196,168,130,0.22)`, borderRadius: 2 }}
+            >
               <Icon style={{ width: 15, height: 15, color: GOLD, marginBottom: 8 }} />
               <div className="text-3xl mb-0.5" style={{ fontFamily: SERIF, color: BROWN }}>{value}</div>
               <div className="text-[10px] tracking-widest uppercase" style={{ fontFamily: SANS, color: TAN }}>{label}</div>
-            </div>
+            </button>
           ))}
         </div>
 
@@ -4028,10 +4249,12 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4" style={{ borderTop: `1px solid rgba(196,168,130,0.2)` }}>
             <div>
               <p className="text-[10px] tracking-widest uppercase mb-1" style={{ fontFamily: SANS, color: GOLD }}>
-                Invitados confirmados × precio
+                Banquete (externos + 7 fijos) × precio
               </p>
               <p className="text-lg" style={{ fontFamily: SERIF, color: BROWN }}>{formatCOP(budgetFromGuests)}</p>
-              <p className="text-[10px]" style={{ fontFamily: SANS, color: TAN }}>{confirmedAttendeeTotal} personas</p>
+              <p className="text-[10px]" style={{ fontFamily: SANS, color: TAN }}>
+                {confirmedExternalTotal} externos + {FIXED_GUEST_COUNT} fijos = {totalBanquetePersonas} personas
+              </p>
             </div>
             <div>
               <p className="text-[10px] tracking-widest uppercase mb-1" style={{ fontFamily: SANS, color: GOLD }}>
@@ -4270,6 +4493,15 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
           mediaType={detail.mediaType}
           onDelete={detail.onDelete}
           onClose={() => setDetail(null)}
+        />
+      )}
+
+      {listModal && (
+        <StatListModal
+          title={listModal.title}
+          columns={listModal.columns}
+          rows={listModal.rows}
+          onClose={() => setListModal(null)}
         />
       )}
     </div>
