@@ -39,14 +39,10 @@ interface GuestMediaItem {
 
 interface GalleryComment {
   id: string;
+  photoSrc: string;
   name: string;
   message: string;
   timestamp: string;
-}
-
-interface GalleryPhotoData {
-  likes: number;
-  comments: GalleryComment[];
 }
 
 interface GuestRecord {
@@ -80,6 +76,7 @@ const WEDDING_DATE = new Date("2026-12-05T16:30:00-05:00");
 const IMG = {
   beach:   "/hero.jpeg",
   hero:    "/hero.jpeg",
+  hero2:   "/hero2.jpeg",
   couple1: "/inv1.jpeg",
   couple2: "/inv2.jpeg",
   couple3: "/inv3.jpeg",
@@ -1318,13 +1315,20 @@ function DressCodeContent() {
 
 // ─── Gallery with Comments Section ────────────────────────────────────────────
 
-function GalleryContent() {
-  const allImages = [
+const GALLERY_UPLOAD_FOLDER = "Nosotros";
+
+type GalleryItem =
+  | { kind: "static"; key: string; src: string }
+  | { kind: "community"; key: string; media: GuestMediaItem };
+
+function GalleryContent({ guest }: { guest: GuestRecord | null }) {
+  const staticImages = [
     IMG.couple1,
     IMG.couple2,
     IMG.couple3,
     IMG.couple4,
     IMG.couple5,
+    IMG.hero2,
     "/1777245374090.jpg",
     "/1777858783730 (1).jpg",
     "/primer aniversario.jpg",
@@ -1336,29 +1340,118 @@ function GalleryContent() {
     "/Screenshot_20251214_230500_WhatsApp.jpg",
   ];
 
-  const [photoData, setPhotoData] = useState<Record<string, GalleryPhotoData>>(() => {
-    try { return JSON.parse(localStorage.getItem("gallery_photo_data") || "{}"); } catch { return {}; }
-  });
+  // Likes/comentarios de las fotos curadas — en Supabase, para que se vean
+  // iguales en todos los dispositivos (antes vivían solo en localStorage).
+  const [staticLikes, setStaticLikes] = useState<Record<string, number>>({});
+  const [staticComments, setStaticComments] = useState<GalleryComment[]>([]);
+  // Fotos/videos que cualquiera agrega desde el botón "+" de esta galería —
+  // se guardan como guest_media en la carpeta "Nosotros" y se mezclan aquí.
+  const [communityItems, setCommunityItems] = useState<GuestMediaItem[]>([]);
+  const [communityComments, setCommunityComments] = useState<GuestMediaComment[]>([]);
+
   const [likedByMe, setLikedByMe] = useState<Set<string>>(() => {
     try { return new Set<string>(JSON.parse(localStorage.getItem("gallery_liked") || "[]")); } catch { return new Set(); }
   });
-  const [activeSrc, setActiveSrc] = useState<string | null>(null);
-  useBodyScrollLock(!!activeSrc);
+  const [activeItem, setActiveItem] = useState<GalleryItem | null>(null);
+  useBodyScrollLock(!!activeItem);
   const [commentForm, setCommentForm] = useState({ name: "", message: "" });
+
+  const [addOpen, setAddOpen] = useState(false);
+  const [addName, setAddName] = useState(guest?.displayName ?? "");
+  const [addFile, setAddFile] = useState<File | null>(null);
+  const [adding, setAdding] = useState(false);
 
   const scrollerRef = useRef<HTMLDivElement>(null);
   const interactingRef = useRef(false);
-  const activeSrcRef = useRef<string | null>(null);
+  const activeItemRef = useRef<GalleryItem | null>(null);
   const resumeTimeoutRef = useRef<number | undefined>(undefined);
 
-  useEffect(() => { activeSrcRef.current = activeSrc; }, [activeSrc]);
+  useEffect(() => { activeItemRef.current = activeItem; }, [activeItem]);
+
+  useEffect(() => {
+    if (!supabaseReady || !supabase) return;
+    const fetchStaticLikes = async () => {
+      const { data, error } = await supabase.from("gallery_photos").select("*");
+      if (error) { console.error(error); return; }
+      const map: Record<string, number> = {};
+      (data ?? []).forEach((row) => { map[row.src] = row.likes ?? 0; });
+      setStaticLikes(map);
+    };
+    fetchStaticLikes();
+    const channel = supabase
+      .channel("gallery_photos_changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "gallery_photos" }, fetchStaticLikes)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  useEffect(() => {
+    if (!supabaseReady || !supabase) return;
+    const fetchStaticComments = async () => {
+      const { data, error } = await supabase.from("gallery_comments").select("*").order("created_at", { ascending: true });
+      if (error) { console.error(error); return; }
+      setStaticComments((data ?? []).map((row) => ({
+        id: row.id, photoSrc: row.photo_src, name: row.name, message: row.message, timestamp: row.created_at,
+      })));
+    };
+    fetchStaticComments();
+    const channel = supabase
+      .channel("gallery_comments_changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "gallery_comments" }, fetchStaticComments)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  useEffect(() => {
+    if (!supabaseReady || !supabase) return;
+    const fetchCommunity = async () => {
+      const { data, error } = await supabase
+        .from("guest_media")
+        .select("*")
+        .eq("folder", GALLERY_UPLOAD_FOLDER)
+        .order("created_at", { ascending: false });
+      if (error) { console.error(error); return; }
+      setCommunityItems((data ?? []).map((row) => ({
+        id: row.id, guestId: row.guest_id ?? null, name: row.name, folder: row.folder,
+        url: row.url, type: row.type, likes: row.likes ?? 0, timestamp: row.created_at,
+      })));
+    };
+    fetchCommunity();
+    const channel = supabase
+      .channel("gallery_community_changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "guest_media" }, fetchCommunity)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  useEffect(() => {
+    if (!supabaseReady || !supabase) return;
+    const fetchComments = async () => {
+      const { data, error } = await supabase.from("guest_media_comments").select("*").order("created_at", { ascending: true });
+      if (error) { console.error(error); return; }
+      setCommunityComments((data ?? []).map((row) => ({
+        id: row.id, mediaId: row.media_id, name: row.name, message: row.message, timestamp: row.created_at,
+      })));
+    };
+    fetchComments();
+    const channel = supabase
+      .channel("gallery_community_comments_changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "guest_media_comments" }, fetchComments)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  const items: GalleryItem[] = [
+    ...staticImages.map((src): GalleryItem => ({ kind: "static", key: `s:${src}`, src })),
+    ...communityItems.map((media): GalleryItem => ({ kind: "community", key: `c:${media.id}`, media })),
+  ];
 
   // Slow, seamless, self-scrolling filmstrip — pauses while the guest interacts or a photo is open
   useEffect(() => {
     let raf: number;
     const step = () => {
       const el = scrollerRef.current;
-      if (el && !interactingRef.current && !activeSrcRef.current) {
+      if (el && !interactingRef.current && !activeItemRef.current) {
         el.scrollLeft += 0.5;
         const half = el.scrollWidth / 2;
         if (half > 0 && el.scrollLeft >= half) el.scrollLeft -= half;
@@ -1378,44 +1471,80 @@ function GalleryContent() {
     resumeTimeoutRef.current = window.setTimeout(() => { interactingRef.current = false; }, 2200);
   };
 
-  const getData = (src: string): GalleryPhotoData => photoData[src] ?? { likes: 0, comments: [] };
+  const itemSrc = (item: GalleryItem) => (item.kind === "static" ? item.src : item.media.url);
+  const itemType = (item: GalleryItem): "photo" | "video" => (item.kind === "static" ? "photo" : item.media.type);
+  const itemLikes = (item: GalleryItem) => (item.kind === "static" ? (staticLikes[item.src] ?? 0) : item.media.likes);
+  const itemComments = (item: GalleryItem) =>
+    item.kind === "static"
+      ? staticComments.filter((c) => c.photoSrc === item.src)
+      : communityComments.filter((c) => c.mediaId === item.media.id);
 
-  const persistPhotoData = (next: Record<string, GalleryPhotoData>) => {
-    setPhotoData(next);
-    localStorage.setItem("gallery_photo_data", JSON.stringify(next));
-  };
-  const persistLiked = (next: Set<string>) => {
+  const toggleLike = async (item: GalleryItem) => {
+    if (!supabase) return;
+    const isLiked = likedByMe.has(item.key);
+    const delta = isLiked ? -1 : 1;
+    if (item.kind === "static") {
+      const { error } = await supabase.rpc("increment_gallery_like", { p_src: item.src, delta });
+      if (error) { console.error(error); return; }
+    } else {
+      const { error } = await supabase.rpc("increment_like", { row_id: item.media.id, delta });
+      if (error) { console.error(error); return; }
+    }
+    const next = new Set(likedByMe);
+    if (isLiked) next.delete(item.key); else next.add(item.key);
     setLikedByMe(next);
     localStorage.setItem("gallery_liked", JSON.stringify(Array.from(next)));
   };
 
-  const toggleLike = (src: string) => {
-    const isLiked = likedByMe.has(src);
-    const data = getData(src);
-    persistPhotoData({ ...photoData, [src]: { ...data, likes: Math.max(0, data.likes + (isLiked ? -1 : 1)) } });
-    const nextLiked = new Set(likedByMe);
-    if (isLiked) nextLiked.delete(src); else nextLiked.add(src);
-    persistLiked(nextLiked);
-  };
-
-  const handleAddComment = (e: React.FormEvent) => {
+  const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeSrc || !commentForm.name.trim() || !commentForm.message.trim()) return;
-    const data = getData(activeSrc);
-    const newComment: GalleryComment = {
-      id: crypto.randomUUID(),
-      name: commentForm.name.trim(),
-      message: commentForm.message.trim(),
-      timestamp: new Date().toISOString(),
-    };
-    persistPhotoData({ ...photoData, [activeSrc]: { ...data, comments: [...data.comments, newComment] } });
-    setCommentForm({ name: "", message: "" });
+    if (!supabase || !activeItem || !commentForm.name.trim() || !commentForm.message.trim()) return;
+    if (activeItem.kind === "static") {
+      const { error } = await supabase.from("gallery_comments").insert({
+        photo_src: activeItem.src, name: commentForm.name.trim(), message: commentForm.message.trim(),
+      });
+      if (error) { console.error(error); return; }
+    } else {
+      const { error } = await supabase.from("guest_media_comments").insert({
+        media_id: activeItem.media.id, name: commentForm.name.trim(), message: commentForm.message.trim(),
+      });
+      if (error) { console.error(error); return; }
+    }
+    setCommentForm((f) => ({ ...f, message: "" }));
   };
 
   const goTo = (dir: 1 | -1) => {
-    const idx = activeSrc ? allImages.indexOf(activeSrc) : -1;
+    const idx = activeItem ? items.findIndex((i) => i.key === activeItem.key) : -1;
     if (idx < 0) return;
-    setActiveSrc(allImages[(idx + dir + allImages.length) % allImages.length]);
+    setActiveItem(items[(idx + dir + items.length) % items.length]);
+  };
+
+  const handleAddSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!addFile || !supabase) return;
+    const type: "photo" | "video" = addFile.type.startsWith("video") ? "video" : "photo";
+    const path = `${GALLERY_UPLOAD_FOLDER}/${crypto.randomUUID()}-${addFile.name}`;
+    setAdding(true);
+    try {
+      const { error: uploadError } = await supabase.storage.from(GUEST_MEDIA_BUCKET).upload(path, addFile);
+      if (uploadError) throw uploadError;
+      const { data: urlData } = supabase.storage.from(GUEST_MEDIA_BUCKET).getPublicUrl(path);
+      const { error: insertError } = await supabase.from("guest_media").insert({
+        name: addName.trim() || "Invitado",
+        folder: GALLERY_UPLOAD_FOLDER,
+        url: urlData.publicUrl,
+        type,
+        likes: 0,
+        guest_id: guest?.id ?? null,
+      });
+      if (insertError) throw insertError;
+      setAddFile(null);
+      setAddOpen(false);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setAdding(false);
+    }
   };
 
   return (
@@ -1435,47 +1564,126 @@ function GalleryContent() {
             onTouchStart={pauseAutoScroll}
             onTouchEnd={scheduleResume}
           >
-            {[...allImages, ...allImages].map((src, i) => {
-              const data = getData(src);
-              const liked = likedByMe.has(src);
+            {[...items, ...items].map((item, i) => {
+              const src = itemSrc(item);
+              const type = itemType(item);
+              const liked = likedByMe.has(item.key);
               return (
                 <motion.button
-                  key={i}
+                  key={`${item.key}-${i}`}
                   type="button"
-                  onClick={() => setActiveSrc(src)}
+                  onClick={() => setActiveItem(item)}
                   whileHover={{ scale: 1.06, y: -4 }}
                   whileTap={{ scale: 0.97 }}
                   transition={{ duration: 0.25 }}
                   className="relative flex-shrink-0 rounded-lg overflow-hidden"
                   style={{ width: 168, height: 210, boxShadow: "0 4px 14px rgba(60,45,20,0.16)" }}
                 >
-                  <img src={src} alt="" className="w-full h-full object-cover" draggable={false} />
+                  {type === "photo"
+                    ? <img src={src} alt="" className="w-full h-full object-cover" draggable={false} />
+                    : <video src={src} className="w-full h-full object-cover" muted playsInline />}
+                  {type === "video" && (
+                    <div className="absolute inset-0 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.15)" }}>
+                      <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.45)" }}>
+                        <Video style={{ width: 15, height: 15, color: CREAM }} />
+                      </div>
+                    </div>
+                  )}
                   <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.5) 0%, transparent 45%)" }} />
                   <div className="absolute bottom-2 left-2 flex items-center gap-2 text-[10px]" style={{ fontFamily: SANS, color: CREAM }}>
                     <span className="flex items-center gap-1">
                       <Heart style={{ width: 11, height: 11 }} fill={liked ? GOLD : "none"} stroke={CREAM} />
-                      {data.likes}
+                      {itemLikes(item)}
                     </span>
                     <span className="flex items-center gap-1">
                       <MessageCircle style={{ width: 11, height: 11 }} stroke={CREAM} />
-                      {data.comments.length}
+                      {itemComments(item).length}
                     </span>
                   </div>
                 </motion.button>
               );
             })}
+
+            {/* "+" — cualquiera puede sumar una foto o video a este muro */}
+            <button
+              type="button"
+              onClick={() => setAddOpen(true)}
+              className="relative flex-shrink-0 rounded-lg flex flex-col items-center justify-center gap-2 transition-colors"
+              style={{
+                width: 168, height: 210,
+                border: `1px dashed rgba(196,168,130,0.55)`,
+                background: "rgba(196,168,130,0.06)",
+              }}
+            >
+              <Plus style={{ width: 26, height: 26, color: GOLD }} />
+              <span className="text-[10px] tracking-widest uppercase" style={{ fontFamily: SANS, color: TAN }}>
+                Agregar foto
+              </span>
+            </button>
           </div>
         </Reveal>
       </div>
 
-      {/* Lightbox — like Facebook: view large, like, and comment on this one photo */}
+      {/* Modal para agregar una foto/video al muro */}
       <AnimatePresence>
-        {activeSrc && (
+        {addOpen && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-[70] flex items-center justify-center p-4"
             style={{ background: "rgba(20,14,6,0.82)" }}
-            onClick={() => setActiveSrc(null)}
+            onClick={() => !adding && setAddOpen(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }}
+              transition={{ duration: 0.3 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full max-w-sm rounded-lg p-6"
+              style={{ background: "#FFFBF2" }}
+            >
+              <button
+                onClick={() => !adding && setAddOpen(false)}
+                aria-label="Cerrar"
+                className="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center"
+                style={{ background: "rgba(0,0,0,0.08)" }}
+              >
+                <X style={{ width: 16, height: 16, color: BROWN }} />
+              </button>
+              <h3 className="text-lg mb-4" style={{ fontFamily: SERIF, color: BROWN }}>Suma tu foto o video</h3>
+              <form onSubmit={handleAddSubmit} className="space-y-4">
+                <input
+                  type="text" placeholder="Tu nombre"
+                  className="w-full px-0 py-2 bg-transparent border-b text-sm outline-none"
+                  style={{ fontFamily: SANS, color: BROWN, borderBottomColor: "rgba(196,168,130,0.4)", borderBottomStyle: "solid", borderBottomWidth: 1 }}
+                  value={addName}
+                  onChange={(e) => setAddName(e.target.value)}
+                />
+                <label className="flex items-center gap-3 px-4 py-3 cursor-pointer" style={{ border: `1px dashed rgba(196,168,130,0.45)`, borderRadius: 4 }}>
+                  <Upload style={{ width: 16, height: 16, color: GOLD, flexShrink: 0 }} />
+                  <span className="text-xs truncate" style={{ fontFamily: SANS, color: addFile ? BROWN : TAN }}>
+                    {addFile ? addFile.name : "Selecciona una foto o video"}
+                  </span>
+                  <input type="file" accept="image/*,video/*" className="hidden"
+                    onChange={(e) => setAddFile(e.target.files?.[0] ?? null)} />
+                </label>
+                <GoldButton type="submit" disabled={!addFile || adding} className="w-full py-3">
+                  {adding
+                    ? <div className="w-4 h-4 border-2 border-white/25 border-t-white rounded-full animate-spin" />
+                    : <><Upload style={{ width: 14, height: 14 }} /> Subir al muro</>}
+                </GoldButton>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Lightbox — like Facebook: view large, like, and comment on this one photo */}
+      <AnimatePresence>
+        {activeItem && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+            style={{ background: "rgba(20,14,6,0.82)" }}
+            onClick={() => setActiveItem(null)}
           >
             <motion.div
               initial={{ opacity: 0, scale: 0.94, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }}
@@ -1485,7 +1693,7 @@ function GalleryContent() {
               style={{ background: "#FFFBF2" }}
             >
               <button
-                onClick={() => setActiveSrc(null)}
+                onClick={() => setActiveItem(null)}
                 aria-label="Cerrar"
                 className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full flex items-center justify-center"
                 style={{ background: "rgba(0,0,0,0.45)" }}
@@ -1494,10 +1702,12 @@ function GalleryContent() {
               </button>
 
               <div className="relative" style={{ aspectRatio: "4/5" }}>
-                <img src={activeSrc} alt="" className="w-full h-full object-cover" />
+                {itemType(activeItem) === "photo"
+                  ? <img src={itemSrc(activeItem)} alt="" className="w-full h-full object-cover" />
+                  : <video src={itemSrc(activeItem)} controls playsInline className="w-full h-full object-cover" />}
                 <button
                   onClick={() => goTo(-1)}
-                  aria-label="Foto anterior"
+                  aria-label="Anterior"
                   className="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full flex items-center justify-center"
                   style={{ background: "rgba(0,0,0,0.4)" }}
                 >
@@ -1505,7 +1715,7 @@ function GalleryContent() {
                 </button>
                 <button
                   onClick={() => goTo(1)}
-                  aria-label="Foto siguiente"
+                  aria-label="Siguiente"
                   className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full flex items-center justify-center"
                   style={{ background: "rgba(0,0,0,0.4)" }}
                 >
@@ -1515,22 +1725,22 @@ function GalleryContent() {
 
               <div className="p-5">
                 <button
-                  onClick={() => toggleLike(activeSrc)}
+                  onClick={() => toggleLike(activeItem)}
                   className="flex items-center gap-2 mb-5 transition-transform active:scale-95"
                 >
                   <Heart
                     style={{ width: 22, height: 22 }}
-                    fill={likedByMe.has(activeSrc) ? GOLD : "none"}
-                    stroke={likedByMe.has(activeSrc) ? GOLD : TAN}
+                    fill={likedByMe.has(activeItem.key) ? GOLD : "none"}
+                    stroke={likedByMe.has(activeItem.key) ? GOLD : TAN}
                   />
                   <span className="text-sm" style={{ fontFamily: SANS, color: BROWN }}>
-                    {getData(activeSrc).likes} me gusta
+                    {itemLikes(activeItem)} me gusta
                   </span>
                 </button>
 
-                {getData(activeSrc).comments.length > 0 && (
+                {itemComments(activeItem).length > 0 && (
                   <div className="space-y-3 mb-5">
-                    {getData(activeSrc).comments.map((c) => (
+                    {itemComments(activeItem).map((c) => (
                       <div key={c.id} className="p-3 rounded" style={{ background: "rgba(196,168,130,0.08)" }}>
                         <p className="text-sm mb-1" style={{ fontFamily: SANS, color: BROWN }}>{c.message}</p>
                         <p className="text-[10px] tracking-widest uppercase" style={{ fontFamily: SANS, color: GOLD }}>— {c.name}</p>
@@ -2180,7 +2390,7 @@ function NosotrosSection({ guest }: { guest: GuestRecord | null }) {
         </div>
       </Reveal>
 
-      <GalleryContent />
+      <GalleryContent guest={guest} />
 
       <Reveal delay={0.1}>
         <div className="text-center mt-16 mb-2">
@@ -2763,6 +2973,153 @@ function RSVPHubContent({ rsvpName, onSuccess, guestName, guest }: { rsvpName: s
 
 // ─── Admin Dashboard ──────────────────────────────────────────────────────────
 
+interface AdminDetailField {
+  label: string;
+  value: string;
+}
+
+/** Generic "tap a card, see everything" modal for the admin panel: shows every
+ *  field, an optional photo/video preview, a button to copy all the info as
+ *  plain text, a real download (fetches the file so cross-origin Supabase
+ *  storage links actually save instead of just navigating), and an optional
+ *  delete action. */
+function AdminDetailModal({ title, subtitle, fields, mediaUrl, mediaType, onClose, onDelete }: {
+  title: string;
+  subtitle?: string;
+  fields: AdminDetailField[];
+  mediaUrl?: string | null;
+  mediaType?: "photo" | "video" | null;
+  onClose: () => void;
+  onDelete?: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  useBodyScrollLock(true);
+
+  const handleCopy = () => {
+    const text = [title, ...fields.map((f) => `${f.label}: ${f.value}`)].join("\n");
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  const handleDownload = async () => {
+    if (!mediaUrl) return;
+    setDownloading(true);
+    try {
+      const res = await fetch(mediaUrl);
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = decodeURIComponent(mediaUrl.split("/").pop() || "descarga");
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      console.error(err);
+      window.open(mediaUrl, "_blank");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return createPortal(
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[80] flex items-center justify-center p-4"
+        style={{ background: "rgba(20,14,6,0.82)" }}
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ opacity: 0, scale: 0.94, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }}
+          transition={{ duration: 0.25 }}
+          onClick={(e) => e.stopPropagation()}
+          className="relative w-full max-w-md max-h-[90vh] overflow-y-auto rounded-lg"
+          style={{ background: "#FFFBF2" }}
+        >
+          <button
+            onClick={onClose}
+            aria-label="Cerrar"
+            className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.45)" }}
+          >
+            <X style={{ width: 16, height: 16, color: CREAM }} />
+          </button>
+
+          {mediaUrl && (
+            <div className="relative" style={{ aspectRatio: mediaType === "video" ? "9/16" : "4/5", maxHeight: 360 }}>
+              {mediaType === "video"
+                ? <video src={mediaUrl} controls playsInline className="w-full h-full object-cover" />
+                : <img src={mediaUrl} alt="" className="w-full h-full object-cover" />}
+            </div>
+          )}
+
+          <div className="p-6">
+            <h3 className="text-lg mb-1" style={{ fontFamily: SERIF, color: BROWN }}>{title}</h3>
+            {subtitle && (
+              <p className="text-[10px] tracking-widest uppercase mb-4" style={{ fontFamily: SANS, color: GOLD }}>{subtitle}</p>
+            )}
+
+            <div className="space-y-3 mb-6" style={{ marginTop: subtitle ? 0 : 12 }}>
+              {fields.map((f) => (
+                <div key={f.label}>
+                  <p className="text-[10px] tracking-widest uppercase mb-1" style={{ fontFamily: SANS, color: GOLD }}>{f.label}</p>
+                  <p className="text-sm" style={{ fontFamily: SANS, color: BROWN }}>{f.value || "—"}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={handleCopy}
+                className="flex-1 min-w-[120px] px-4 py-2.5 text-[10px] tracking-widest uppercase transition-all flex items-center justify-center gap-1.5"
+                style={{ fontFamily: SANS, background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DARK})`, color: CREAM, borderRadius: 2 }}
+              >
+                {copied ? "¡Copiado!" : "Copiar info"}
+              </button>
+              {mediaUrl && (
+                <button
+                  onClick={handleDownload}
+                  disabled={downloading}
+                  className="flex-1 min-w-[120px] px-4 py-2.5 text-[10px] tracking-widest uppercase transition-all disabled:opacity-60"
+                  style={{ fontFamily: SANS, background: "transparent", color: BROWN, border: `1px solid rgba(196,168,130,0.4)`, borderRadius: 2 }}
+                >
+                  {downloading ? "Descargando…" : "Descargar"}
+                </button>
+              )}
+              {onDelete && (
+                confirmingDelete ? (
+                  <button
+                    onClick={onDelete}
+                    className="flex-1 min-w-[120px] px-4 py-2.5 text-[10px] tracking-widest uppercase transition-all"
+                    style={{ fontFamily: SANS, background: "#C4604A", color: CREAM, borderRadius: 2 }}
+                  >
+                    Confirmar borrado
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setConfirmingDelete(true)}
+                    className="flex-1 min-w-[120px] px-4 py-2.5 text-[10px] tracking-widest uppercase transition-all"
+                    style={{ fontFamily: SANS, background: "transparent", color: "#C4604A", border: `1px solid rgba(196,96,74,0.4)`, borderRadius: 2 }}
+                  >
+                    Eliminar
+                  </button>
+                )
+              )}
+            </div>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>,
+    document.body
+  );
+}
+
 function AdminDashboard({ onClose }: { onClose: () => void }) {
   const [authed, setAuthed] = useState(false);
   const [pwd, setPwd] = useState("");
@@ -2847,7 +3204,24 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
 
   const [guests, setGuests] = useState<GuestRecord[]>([]);
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
-  const [expandedGuestId, setExpandedGuestId] = useState<string | null>(null);
+
+  type DetailModalState = {
+    title: string;
+    subtitle?: string;
+    fields: AdminDetailField[];
+    mediaUrl?: string | null;
+    mediaType?: "photo" | "video" | null;
+    onDelete?: () => void;
+  };
+  const [detail, setDetail] = useState<DetailModalState | null>(null);
+
+  const deleteRow = async (table: string, id: string) => {
+    if (!supabase) return;
+    const { error } = await supabase.from(table).delete().eq("id", id);
+    if (error) { console.error(error); return; }
+    setDetail(null);
+  };
+
   useEffect(() => {
     if (!supabaseReady || !supabase) return;
     supabase.from("invitados").select("*").order("grupo").order("nombre").then(({ data, error }) => {
@@ -2998,16 +3372,44 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
                   {guests.filter((g) => g.side === side).map((g) => {
                     const rsvp = rsvpFor(g.id);
                     const confirmed = Boolean(rsvp);
-                    const expanded = expandedGuestId === g.id;
                     const theirMedia = guestMediaItems.filter((m) => m.guestId === g.id);
                     const theirNotes = notes.filter((n) => n.guestId === g.id);
+                    const openGuestDetail = () => {
+                      const fields: AdminDetailField[] = [
+                        { label: "Invitación", value: `${g.displayName} · ${g.passes} ${g.passes === 1 ? "pase" : "pases"}` },
+                        { label: "Enlace", value: `${window.location.origin}${window.location.pathname}?g=${g.slug}` },
+                      ];
+                      if (confirmed) {
+                        fields.push(
+                          { label: "Confirmó", value: `${rsvp!.name}${rsvp!.phone ? " · " + rsvp!.phone : ""}` },
+                          { label: "Asistentes", value: `${rsvp!.attendeeCount ?? "—"} de ${g.passes} pases` },
+                          { label: "Alimentación", value: rsvp!.dietary || "—" },
+                          { label: "Canción", value: rsvp!.songRequest || "—" },
+                          { label: "Mensaje", value: rsvp!.loveNote || "—" },
+                          { label: "Video de RSVP", value: rsvp!.videoUrl || "—" },
+                        );
+                      } else {
+                        fields.push({ label: "Estado", value: "Aún no ha confirmado asistencia" });
+                      }
+                      if (theirNotes.length > 0) {
+                        fields.push({ label: `Sus notas (${theirNotes.length})`, value: theirNotes.map((n) => `"${n.note}"`).join("\n") });
+                      }
+                      if (theirMedia.length > 0) {
+                        fields.push({ label: `Sus fotos/videos (${theirMedia.length})`, value: theirMedia.map((m) => m.url).join("\n") });
+                      }
+                      setDetail({
+                        title: g.displayName,
+                        subtitle: confirmed ? "Confirmado" : "Sin confirmar",
+                        fields,
+                      });
+                    };
                     return (
                       <div key={g.id} className="overflow-hidden" style={{ borderRadius: 2 }}>
                         <div
                           role="button"
                           tabIndex={0}
-                          onClick={() => setExpandedGuestId(expanded ? null : g.id)}
-                          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setExpandedGuestId(expanded ? null : g.id); }}
+                          onClick={openGuestDetail}
+                          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") openGuestDetail(); }}
                           className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left transition-colors cursor-pointer"
                           style={{
                             background: confirmed ? "rgba(122,168,116,0.16)" : "#FAF8F3",
@@ -3038,84 +3440,6 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
                             {copiedSlug === g.slug ? "¡Copiado!" : "Copiar"}
                           </button>
                         </div>
-
-                        <AnimatePresence initial={false}>
-                          {expanded && (
-                            <motion.div
-                              initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-                              transition={{ duration: 0.25 }}
-                              style={{ overflow: "hidden", background: "#FFFBF2", border: `1px solid rgba(196,168,130,0.18)`, borderTop: "none" }}
-                            >
-                              <div className="p-4 space-y-3">
-                                {!confirmed ? (
-                                  <p className="text-xs italic" style={{ fontFamily: SANS, color: TAN }}>Aún no ha confirmado asistencia.</p>
-                                ) : (
-                                  <>
-                                    <div className="grid grid-cols-2 gap-3 text-xs">
-                                      <div>
-                                        <p className="tracking-widest uppercase mb-1" style={{ fontFamily: SANS, color: GOLD }}>Confirmó</p>
-                                        <p style={{ fontFamily: SANS, color: BROWN }}>{rsvp!.name} {rsvp!.phone ? `· ${rsvp!.phone}` : ""}</p>
-                                      </div>
-                                      <div>
-                                        <p className="tracking-widest uppercase mb-1" style={{ fontFamily: SANS, color: GOLD }}>Asistentes</p>
-                                        <p style={{ fontFamily: SANS, color: BROWN }}>{rsvp!.attendeeCount ?? "—"} de {g.passes} pases</p>
-                                      </div>
-                                      <div>
-                                        <p className="tracking-widest uppercase mb-1" style={{ fontFamily: SANS, color: GOLD }}>Alimentación</p>
-                                        <p style={{ fontFamily: SANS, color: BROWN }}>{rsvp!.dietary || "—"}</p>
-                                      </div>
-                                      <div>
-                                        <p className="tracking-widest uppercase mb-1" style={{ fontFamily: SANS, color: GOLD }}>Canción</p>
-                                        <p style={{ fontFamily: SANS, color: BROWN }}>{rsvp!.songRequest || "—"}</p>
-                                      </div>
-                                    </div>
-                                    {rsvp!.loveNote && (
-                                      <div>
-                                        <p className="text-xs tracking-widest uppercase mb-1" style={{ fontFamily: SANS, color: GOLD }}>Mensaje</p>
-                                        <p className="text-xs italic" style={{ fontFamily: SERIF, color: BROWN }}>"{rsvp!.loveNote}"</p>
-                                      </div>
-                                    )}
-                                    {rsvp!.videoUrl && (
-                                      <a href={rsvp!.videoUrl} target="_blank" rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1 text-[10px] tracking-widest uppercase" style={{ fontFamily: SANS, color: GOLD }}>
-                                        <Video style={{ width: 12, height: 12 }} /> Ver video de RSVP
-                                      </a>
-                                    )}
-                                  </>
-                                )}
-
-                                {theirNotes.length > 0 && (
-                                  <div>
-                                    <p className="text-xs tracking-widest uppercase mb-1" style={{ fontFamily: SANS, color: GOLD }}>
-                                      Sus notas ({theirNotes.length})
-                                    </p>
-                                    {theirNotes.map((n) => (
-                                      <p key={n.id} className="text-xs italic mb-1" style={{ fontFamily: SERIF, color: BROWN }}>"{n.note}"</p>
-                                    ))}
-                                  </div>
-                                )}
-
-                                {theirMedia.length > 0 && (
-                                  <div>
-                                    <p className="text-xs tracking-widest uppercase mb-2" style={{ fontFamily: SANS, color: GOLD }}>
-                                      Sus fotos/videos ({theirMedia.length})
-                                    </p>
-                                    <div className="flex gap-2 flex-wrap">
-                                      {theirMedia.map((m) => (
-                                        <a key={m.id} href={m.url} target="_blank" rel="noopener noreferrer"
-                                          className="w-14 h-14 rounded overflow-hidden flex-shrink-0" style={{ border: `1px solid rgba(196,168,130,0.3)` }}>
-                                          {m.type === "photo"
-                                            ? <img src={m.url} alt="" className="w-full h-full object-cover" />
-                                            : <div className="w-full h-full flex items-center justify-center" style={{ background: "#1a1208" }}><Video style={{ width: 16, height: 16, color: CREAM }} /></div>}
-                                        </a>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
                       </div>
                     );
                   })}
@@ -3186,7 +3510,26 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
               </thead>
               <tbody>
                 {visible.map((e, i) => (
-                  <tr key={e.id} style={{ borderBottom: `1px solid rgba(196,168,130,0.1)`, background: i % 2 === 0 ? "#FAF8F3" : CREAM }}>
+                  <tr
+                    key={e.id}
+                    onClick={() => setDetail({
+                      title: e.name,
+                      subtitle: e.attending ? "Asiste" : "No asiste",
+                      fields: [
+                        { label: "Teléfono", value: e.phone || "—" },
+                        { label: "Asistentes", value: e.attendeeCount != null ? String(e.attendeeCount) : "—" },
+                        { label: "Alimentación", value: e.dietary || "—" },
+                        { label: "Canción", value: e.songRequest || "—" },
+                        { label: "Mensaje", value: e.loveNote || "—" },
+                        { label: "Video de RSVP", value: e.videoUrl || "—" },
+                        { label: "Fecha", value: new Date(e.timestamp).toLocaleString("es-CO") },
+                      ],
+                      mediaUrl: e.videoUrl,
+                      mediaType: e.videoUrl ? "video" : null,
+                      onDelete: () => deleteRow("rsvps", e.id),
+                    })}
+                    style={{ borderBottom: `1px solid rgba(196,168,130,0.1)`, background: i % 2 === 0 ? "#FAF8F3" : CREAM, cursor: "pointer" }}
+                  >
                     <td className="px-4 py-3" style={{ fontFamily: SANS, color: BROWN }}>{e.name}</td>
                     <td className="px-4 py-3">
                       <span className="px-2 py-1 rounded-full text-[10px] tracking-wide uppercase"
@@ -3209,11 +3552,10 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
                     </td>
                     <td className="px-4 py-3">
                       {e.videoUrl ? (
-                        <a href={e.videoUrl} target="_blank" rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-[10px] tracking-widest uppercase"
+                        <span className="flex items-center gap-1 text-[10px] tracking-widest uppercase"
                           style={{ fontFamily: SANS, color: GOLD }}>
                           <Video style={{ width: 12, height: 12 }} /> Ver
-                        </a>
+                        </span>
                       ) : (
                         <span style={{ fontFamily: SANS, color: TAN }}>—</span>
                       )}
@@ -3231,9 +3573,23 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
             <h3 className="text-lg mb-4" style={{ fontFamily: SERIF, color: BROWN }}>Notas de amor recibidas</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {notes.map((n) => (
-                <div key={n.id} className="p-4" style={{
-                  background: CREAM, border: `1px solid rgba(196,168,130,0.22)`, borderRadius: 2,
-                }}>
+                <div
+                  key={n.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setDetail({
+                    title: n.name,
+                    subtitle: "Nota de amor",
+                    fields: [
+                      { label: "Nota", value: n.note },
+                      { label: "Fecha", value: new Date(n.timestamp).toLocaleString("es-CO") },
+                    ],
+                    onDelete: () => deleteRow("love_notes", n.id),
+                  })}
+                  className="p-4 cursor-pointer transition-transform active:scale-[0.98]"
+                  style={{
+                    background: CREAM, border: `1px solid rgba(196,168,130,0.22)`, borderRadius: 2,
+                  }}>
                   <p className="text-sm mb-2" style={{ fontFamily: SERIF, color: BROWN, fontStyle: "italic" }}>"{n.note}"</p>
                   <p className="text-[10px] tracking-widest uppercase" style={{ fontFamily: SANS, color: GOLD }}>— {n.name}</p>
                 </div>
@@ -3252,13 +3608,41 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
                   background: CREAM, border: `1px solid rgba(196,168,130,0.22)`, borderRadius: 2,
                 }}>
                   <video src={v.videoUrl} controls playsInline className="w-full rounded mb-2" style={{ aspectRatio: "9/16", objectFit: "cover" }} />
-                  <p className="text-[10px] tracking-widest uppercase" style={{ fontFamily: SANS, color: GOLD }}>— {v.name}</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[10px] tracking-widest uppercase" style={{ fontFamily: SANS, color: GOLD }}>— {v.name}</p>
+                    <button
+                      onClick={() => setDetail({
+                        title: v.name,
+                        subtitle: "Video de invitado",
+                        fields: [{ label: "Nombre", value: v.name }],
+                        mediaUrl: v.videoUrl,
+                        mediaType: "video",
+                        onDelete: () => deleteRow("video_greetings", v.id),
+                      })}
+                      className="text-[10px] tracking-widest uppercase flex-shrink-0"
+                      style={{ fontFamily: SANS, color: TAN }}
+                    >
+                      Ver más
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
           </div>
         )}
       </div>
+
+      {detail && (
+        <AdminDetailModal
+          title={detail.title}
+          subtitle={detail.subtitle}
+          fields={detail.fields}
+          mediaUrl={detail.mediaUrl}
+          mediaType={detail.mediaType}
+          onDelete={detail.onDelete}
+          onClose={() => setDetail(null)}
+        />
+      )}
     </div>
   );
 }
