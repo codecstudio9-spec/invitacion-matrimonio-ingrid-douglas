@@ -707,6 +707,17 @@ const MOTES = Array.from({ length: 30 }, (_, i) => ({
 function WaxSeal({ cracked }: { cracked: boolean }) {
   return (
     <div style={{ position: "relative", width: 76, height: 76 }}>
+      {/* Destello dorado al quebrarse — un solo pulso breve, no un brillo permanente */}
+      <motion.div
+        initial={false}
+        animate={cracked ? { opacity: [0, 0.9, 0], scale: [0.6, 1.9, 2.4] } : { opacity: 0, scale: 0.6 }}
+        transition={{ duration: 0.7, ease: "easeOut" }}
+        style={{
+          position: "absolute", inset: -20, borderRadius: "50%",
+          background: "radial-gradient(circle, rgba(255,248,225,0.9) 0%, rgba(235,210,150,0.5) 40%, transparent 72%)",
+          pointerEvents: "none",
+        }}
+      />
       {/* Outer drip halo */}
       <div style={{
         position: "absolute", inset: -6, borderRadius: "50%",
@@ -1013,13 +1024,28 @@ function EnvelopeScreen({ onOpen, startMusic, guestName }: { onOpen: () => void;
                   }} />
                 </div>
 
-                {/* Wax seal — sits at bottom-centre of flap */}
+                {/* Wax seal — sits at bottom-centre of flap; se presiona y se parte al tocar */}
                 <div style={{
                   position: "absolute", bottom: "2%", left: "50%",
                   transform: "translateX(-50%)",
                   zIndex: 10,
                 }}>
-                  <WaxSeal cracked={phase !== "idle"} />
+                  <motion.div
+                    animate={
+                      phase === "idle"
+                        ? { scale: 1, rotate: 0, opacity: 1 }
+                        : phase === "seal-break"
+                          ? { scale: [1, 0.86, 1.12, 0.9], rotate: [0, -3, 4, -8], opacity: 1 }
+                          : { scale: 0.5, rotate: 24, opacity: 0 }
+                    }
+                    transition={
+                      phase === "seal-break"
+                        ? { duration: 0.55, times: [0, 0.35, 0.65, 1], ease: "easeInOut" }
+                        : { duration: 0.5, ease: "easeIn" }
+                    }
+                  >
+                    <WaxSeal cracked={phase !== "idle"} />
+                  </motion.div>
                 </div>
               </div>
 
@@ -1033,18 +1059,34 @@ function EnvelopeScreen({ onOpen, startMusic, guestName }: { onOpen: () => void;
                 pointerEvents: "none", zIndex: 2,
               }} />
 
+              {/* Resplandor cálido que se asoma justo antes de que la carta suba — da la
+                  sensación de que hay luz saliendo del sobre, no solo una tarjeta */}
+              <motion.div
+                initial={false}
+                animate={{ opacity: flapOpen ? [0, 0.8, 0.4] : 0, scale: flapOpen ? [0.6, 1.3] : 0.6 }}
+                transition={{ duration: 1.1, ease: "easeOut", delay: 0.15 }}
+                style={{
+                  position: "absolute", left: "50%", bottom: 18, width: 140, height: 140,
+                  transform: "translateX(-50%)",
+                  background: "radial-gradient(circle, rgba(255,246,214,0.9) 0%, transparent 70%)",
+                  pointerEvents: "none", zIndex: 2,
+                }}
+              />
+
               {/* ── INNER CARD ── */}
               <motion.div
                 animate={
-                  cardUp
-                    ? { y: -100, opacity: 1, scale: 1, rotateX: -4 }
-                    : { y: 0, opacity: flapOpen ? 1 : 0, scale: 0.97, rotateX: 0 }
+                  exiting
+                    ? { y: -260, opacity: 0, scale: 1.35, rotateX: -10 }
+                    : cardUp
+                      ? { y: -122, opacity: 1, scale: 1.04, rotateX: -4 }
+                      : { y: 0, opacity: flapOpen ? 1 : 0, scale: 0.97, rotateX: 0 }
                 }
-                transition={{
-                  duration: 1.05,
-                  ease: [0.16, 1, 0.3, 1],
-                  delay: cardUp ? 0.05 : 0.22,
-                }}
+                transition={
+                  exiting
+                    ? { duration: 1.1, ease: [0.4, 0, 1, 1] }
+                    : { duration: 1.05, ease: [0.16, 1, 0.3, 1], delay: cardUp ? 0.05 : 0.22 }
+                }
                 style={{
                   position: "absolute",
                   left: 20, right: 20, bottom: 18,
@@ -1326,6 +1368,44 @@ function VerseBanner() {
 
 // ─── Countdown ────────────────────────────────────────────────────────────────
 
+/** Un dígito de un reloj tipo "split-flap" (aeropuerto viejo) — voltea en 3D
+ *  cada vez que el valor cambia, en vez de solo aparecer el número nuevo. */
+function FlipUnit({ label, val }: { label: string; val: number }) {
+  const display = String(val).padStart(2, "0");
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <div
+        className="relative flex items-center justify-center overflow-hidden w-16 h-16 sm:w-20 sm:h-20"
+        style={{
+          background: "rgba(196,168,130,0.1)",
+          border: `1px solid rgba(196,168,130,0.4)`,
+          borderRadius: 2,
+          perspective: 240,
+        }}
+      >
+        <AnimatePresence mode="popLayout" initial={false}>
+          <motion.span
+            key={display}
+            initial={{ rotateX: 90, opacity: 0 }}
+            animate={{ rotateX: 0, opacity: 1 }}
+            exit={{ rotateX: -90, opacity: 0 }}
+            transition={{ duration: 0.45, ease: "easeInOut" }}
+            className="absolute text-2xl sm:text-3xl tabular-nums"
+            style={{ fontFamily: SERIF, color: BROWN, fontWeight: 400 }}
+          >
+            {display}
+          </motion.span>
+        </AnimatePresence>
+        {/* Costura central — el detalle que lo hace leer como un reloj de volteo */}
+        <div style={{ position: "absolute", left: 0, right: 0, top: "50%", height: 1, background: "rgba(90,70,45,0.18)", zIndex: 1 }} />
+      </div>
+      <span className="text-[10px] tracking-widest uppercase" style={{ fontFamily: SANS, color: GOLD }}>
+        {label}
+      </span>
+    </div>
+  );
+}
+
 function CountdownSection() {
   const { months, days, hours, minutes, seconds } = useCountdown(WEDDING_DATE);
   const units = [
@@ -1348,20 +1428,7 @@ function CountdownSection() {
         <div className="flex flex-wrap justify-center gap-3 sm:gap-5 mt-4">
           {units.map(({ label, val }, i) => (
             <Reveal key={label} delay={i * 0.09}>
-              <div className="flex flex-col items-center gap-2">
-                <div className="w-16 h-16 sm:w-20 sm:h-20 flex items-center justify-center" style={{
-                  background: "rgba(196,168,130,0.1)",
-                  border: `1px solid rgba(196,168,130,0.4)`,
-                  borderRadius: 2,
-                }}>
-                  <span className="text-2xl sm:text-3xl tabular-nums" style={{ fontFamily: SERIF, color: BROWN, fontWeight: 400 }}>
-                    {String(val).padStart(2, "0")}
-                  </span>
-                </div>
-                <span className="text-[10px] tracking-widest uppercase" style={{ fontFamily: SANS, color: GOLD }}>
-                  {label}
-                </span>
-              </div>
+              <FlipUnit label={label} val={val} />
             </Reveal>
           ))}
         </div>
