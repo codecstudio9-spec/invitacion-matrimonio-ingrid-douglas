@@ -7,7 +7,7 @@ import {
   ExternalLink, Heart, Star, Lock, Search, MessageCircle,
   Check, Users, PenLine, ChevronLeft, ChevronRight,
   Shirt, BookOpen, Images, Gift, Banknote, Music, Eye, EyeOff,
-  Home, DollarSign, MessageSquare, Plane, Hotel, Mail, Download, Smile,
+  Home, DollarSign, MessageSquare, Plane, Hotel, Download,
 } from "lucide-react";
 import { supabase, supabaseReady, GUEST_MEDIA_BUCKET, VIDEO_GREETINGS_BUCKET } from "./supabase";
 
@@ -46,7 +46,6 @@ const WEDDING_CONFIG_ID = "main_config";
 // una foto/video/nota ve el botón de eliminar sobre ella.
 const MY_MEDIA_KEY = "my_guest_media_ids";
 const MY_NOTES_KEY = "my_love_notes_ids";
-const MY_MESSAGES_KEY = "my_wedding_messages_ids";
 
 function rememberMine(storageKey: string, id: string) {
   try {
@@ -148,14 +147,6 @@ interface LoveNote {
   guestId: string | null;
   name: string;
   note: string;
-  timestamp: string;
-}
-
-interface WeddingMessage {
-  id: string;
-  guestId: string | null;
-  name: string;
-  message: string;
   timestamp: string;
 }
 
@@ -510,9 +501,7 @@ function MoreDetailsHub({ rsvpResult, onRsvpSuccess, guestName, guest }: { rsvpR
     { key: "vestuario",  icon: Shirt,    label: "Código de Vestuario",  title: "Nuestro Estilo",       content: <DressCodeContent />, featured: false },
     { key: "historia",   icon: BookOpen, label: "Nuestra Historia",     title: "Nuestra Historia",     content: <OurStoryContent />,  featured: false },
     { key: "notas",      icon: PenLine,  label: "Nota de Amor",         title: "Déjanos tu nota",      content: <LoveNotesContent guest={guest} />, featured: false },
-    { key: "mensajes",   icon: Mail,     label: "Mensajes para los novios", title: "Déjanos un mensaje", content: <MessagesWallContent guest={guest} />, featured: false },
     { key: "calendario", icon: Calendar, label: "Calendario",           title: "Calendario Inteligente", content: <SmartCalendarContent />, featured: false },
-    { key: "viaje",      icon: Plane,    label: "Agenda de Viaje",      title: "Agenda de Viaje",      content: <TravelPlanContent />, featured: false },
     { key: "hospedaje",  icon: Hotel,    label: "Hospedaje",            title: "Hospedaje",            content: <LodgingInfoContent />, featured: false },
     { key: "regalos",    icon: Gift,     label: "Mesa de Regalos",      title: "Mesa de Regalos",      content: <GiftsContent />,     featured: false },
     { key: "rsvp",       icon: Check,    label: "Confirmar Asistencia", title: rsvpResult ? "¡Gracias!" : "Confirmar Asistencia",
@@ -1680,85 +1669,6 @@ function SmartCalendarContent() {
   );
 }
 
-// ─── Agenda de Viaje ───────────────────────────────────────────────────────
-
-const RECOMMENDED_AIRPORTS = [
-  {
-    name: "Aeropuerto Golfo de Morrosquillo (TLU) — Tolú",
-    tag: "Opción directa",
-    desc: "Ideal si vienes desde Bogotá — Satena tiene vuelos directos al municipio del evento.",
-  },
-  {
-    name: "Aeropuerto Los Garzones (MTR) — Montería",
-    tag: "Más frecuencias",
-    desc: "El de más vuelos nacionales (Avianca, Latam, Clic). Desde ahí, ~1h30 en carro hasta Tolú/Coveñas.",
-  },
-  {
-    name: "Aeropuerto Las Brujas (CZU) — Corozal",
-    tag: "Alternativa",
-    desc: "A una hora en carro de las playas del Golfo de Morrosquillo.",
-  },
-];
-
-function TravelPlanContent() {
-  return (
-    <div className="max-w-lg mx-auto">
-      <Ornament />
-      <div className="space-y-8 mt-6">
-        <Reveal>
-          <div className="flex gap-4 items-start text-left">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "rgba(196,168,130,0.14)" }}>
-              <Plane style={{ width: 17, height: 17, color: GOLD }} />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-base mb-3" style={{ fontFamily: SERIF, color: BROWN }}>Aeropuertos recomendados</h3>
-              <div className="space-y-4">
-                {RECOMMENDED_AIRPORTS.map((a) => (
-                  <div key={a.name}>
-                    <p className="text-sm" style={{ fontFamily: SANS, color: BROWN, fontWeight: 500 }}>
-                      {a.name}
-                      <span className="ml-2 text-[9px] tracking-widest uppercase" style={{ color: GOLD }}>· {a.tag}</span>
-                    </p>
-                    <p className="text-sm leading-relaxed" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>{a.desc}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </Reveal>
-
-        <Reveal delay={0.1}>
-          <div className="flex gap-4 items-start text-left">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "rgba(196,168,130,0.14)" }}>
-              <Navigation style={{ width: 17, height: 17, color: GOLD }} />
-            </div>
-            <div>
-              <h3 className="text-base mb-1" style={{ fontFamily: SERIF, color: BROWN }}>Transporte recomendado</h3>
-              <p className="text-sm leading-relaxed" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
-                Desde Montería o Corozal necesitarás transporte terrestre hasta Tolú/Coveñas — coordinemos contigo por WhatsApp para ayudarte a organizarlo.
-              </p>
-            </div>
-          </div>
-        </Reveal>
-
-        <Reveal delay={0.18}>
-          <div className="flex gap-4 items-start text-left">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "rgba(196,168,130,0.14)" }}>
-              <Calendar style={{ width: 17, height: 17, color: GOLD }} />
-            </div>
-            <div>
-              <h3 className="text-base mb-1" style={{ fontFamily: SERIF, color: BROWN }}>Fechas importantes</h3>
-              <p className="text-sm leading-relaxed" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
-                La boda es el 5 de diciembre de 2026 a las 4:30 PM. Te sugerimos llegar uno o dos días antes para descansar del viaje.
-              </p>
-            </div>
-          </div>
-        </Reveal>
-      </div>
-    </div>
-  );
-}
-
 // ─── Hospedaje (información) ────────────────────────────────────────────────
 
 const NEARBY_HOTELS = [
@@ -1915,18 +1825,15 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
     "/Screenshot_20251214_230500_WhatsApp.jpg",
   ];
 
-  // Likes/comentarios de las fotos curadas — en Supabase, para que se vean
-  // iguales en todos los dispositivos (antes vivían solo en localStorage).
-  const [staticLikes, setStaticLikes] = useState<Record<string, number>>({});
+  // Reacciones/comentarios de las fotos curadas — en Supabase, para que se
+  // vean iguales en todos los dispositivos (antes vivían solo en localStorage).
+  const [reactions, setReactions] = useState<WeddingReaction[]>([]);
   const [staticComments, setStaticComments] = useState<GalleryComment[]>([]);
   // Fotos/videos que cualquiera agrega desde el botón "+" de esta galería —
   // se guardan como guest_media en la carpeta "Nosotros" y se mezclan aquí.
   const [communityItems, setCommunityItems] = useState<GuestMediaItem[]>([]);
   const [communityComments, setCommunityComments] = useState<GuestMediaComment[]>([]);
 
-  const [likedByMe, setLikedByMe] = useState<Set<string>>(() => {
-    try { return new Set<string>(JSON.parse(localStorage.getItem("gallery_liked") || "[]")); } catch { return new Set(); }
-  });
   const [activeItem, setActiveItem] = useState<GalleryItem | null>(null);
   useBodyScrollLock(!!activeItem);
   const [commentForm, setCommentForm] = useState({ name: "", message: "" });
@@ -1946,21 +1853,22 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
 
   useEffect(() => { activeItemRef.current = activeItem; }, [activeItem]);
 
-  const fetchStaticLikes = async () => {
+  const fetchReactions = async () => {
     if (!supabase) return;
-    const { data, error } = await supabase.from("gallery_photos").select("*");
+    const { data, error } = await supabase.from("wedding_reactions").select("*");
     if (error) { console.error(error); return; }
-    const map: Record<string, number> = {};
-    (data ?? []).forEach((row) => { map[row.src] = row.likes ?? 0; });
-    setStaticLikes(map);
+    setReactions((data ?? []).map((row) => ({
+      id: row.id, emoji: row.emoji, mediaId: row.media_id ?? null, photoSrc: row.photo_src ?? null,
+      guestId: row.guest_id ?? null, timestamp: row.created_at,
+    })));
   };
 
   useEffect(() => {
     if (!supabaseReady || !supabase) return;
-    fetchStaticLikes();
+    fetchReactions();
     const channel = supabase
-      .channel("gallery_photos_changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "gallery_photos" }, fetchStaticLikes)
+      .channel("gallery_reactions_changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "wedding_reactions" }, fetchReactions)
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, []);
@@ -2063,30 +1971,14 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
 
   const itemSrc = (item: GalleryItem) => (item.kind === "static" ? item.src : item.media.url);
   const itemType = (item: GalleryItem): "photo" | "video" => (item.kind === "static" ? "photo" : item.media.type);
-  const itemLikes = (item: GalleryItem) => (item.kind === "static" ? (staticLikes[item.src] ?? 0) : item.media.likes);
+  const itemReactions = (item: GalleryItem) =>
+    item.kind === "static"
+      ? reactions.filter((r) => r.photoSrc === item.src)
+      : reactions.filter((r) => r.mediaId === item.media.id);
   const itemComments = (item: GalleryItem) =>
     item.kind === "static"
       ? staticComments.filter((c) => c.photoSrc === item.src)
       : communityComments.filter((c) => c.mediaId === item.media.id);
-
-  const toggleLike = async (item: GalleryItem) => {
-    if (!supabase) return;
-    const isLiked = likedByMe.has(item.key);
-    const delta = isLiked ? -1 : 1;
-    if (item.kind === "static") {
-      const { error } = await supabase.rpc("increment_gallery_like", { p_src: item.src, delta });
-      if (error) { console.error(error); return; }
-      await fetchStaticLikes();
-    } else {
-      const { error } = await supabase.rpc("increment_like", { row_id: item.media.id, delta });
-      if (error) { console.error(error); return; }
-      await fetchCommunity();
-    }
-    const next = new Set(likedByMe);
-    if (isLiked) next.delete(item.key); else next.add(item.key);
-    setLikedByMe(next);
-    localStorage.setItem("gallery_liked", JSON.stringify(Array.from(next)));
-  };
 
   const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2189,7 +2081,6 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
             {[...items, ...items].map((item, i) => {
               const src = itemSrc(item);
               const type = itemType(item);
-              const liked = likedByMe.has(item.key);
               return (
                 <motion.button
                   key={`${item.key}-${i}`}
@@ -2229,10 +2120,12 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
                   )}
                   <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.5) 0%, transparent 45%)" }} />
                   <div className="absolute bottom-2 left-2 flex items-center gap-2 text-[10px]" style={{ fontFamily: SANS, color: CREAM }}>
-                    <span className="flex items-center gap-1">
-                      <Heart style={{ width: 11, height: 11 }} fill={liked ? GOLD : "none"} stroke={CREAM} />
-                      {itemLikes(item)}
-                    </span>
+                    {itemReactions(item).length > 0 && (
+                      <span className="flex items-center gap-1">
+                        <Heart style={{ width: 11, height: 11 }} fill={GOLD} stroke={CREAM} />
+                        {itemReactions(item).length}
+                      </span>
+                    )}
                     <span className="flex items-center gap-1">
                       <MessageCircle style={{ width: 11, height: 11 }} stroke={CREAM} />
                       {itemComments(item).length}
@@ -2393,20 +2286,14 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
               </motion.div>
 
               <div className="p-5">
-                <div className="flex items-center justify-between gap-2 mb-5">
-                  <button
-                    onClick={() => toggleLike(activeItem)}
-                    className="flex items-center gap-2 transition-transform active:scale-95"
-                  >
-                    <Heart
-                      style={{ width: 22, height: 22 }}
-                      fill={likedByMe.has(activeItem.key) ? GOLD : "none"}
-                      stroke={likedByMe.has(activeItem.key) ? GOLD : TAN}
-                    />
-                    <span className="text-sm" style={{ fontFamily: SANS, color: BROWN }}>
-                      {itemLikes(activeItem)} me gusta
-                    </span>
-                  </button>
+                <div className="flex items-center justify-between gap-2 mb-5 flex-wrap">
+                  <ItemReactions
+                    targetKey={activeItem.key}
+                    target={activeItem.kind === "static" ? { photo_src: activeItem.src } : { media_id: activeItem.media.id }}
+                    reactions={itemReactions(activeItem)}
+                    guestId={guest?.id ?? null}
+                    onChanged={fetchReactions}
+                  />
                   {activeItem.kind === "community" && myMediaIds.has(activeItem.media.id) && (
                     <button
                       onClick={() => handleDeleteMine(activeItem.media)}
@@ -2471,9 +2358,7 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
   const [newFolder, setNewFolder] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [likedByMe, setLikedByMe] = useState<Set<string>>(() => {
-    try { return new Set<string>(JSON.parse(localStorage.getItem("guest_media_liked") || "[]")); } catch { return new Set(); }
-  });
+  const [reactions, setReactions] = useState<WeddingReaction[]>([]);
   const [activeItem, setActiveItem] = useState<GuestMediaItem | null>(null);
   const [comments, setComments] = useState<GuestMediaComment[]>([]);
   const [commentForm, setCommentForm] = useState({ name: "", message: "" });
@@ -2515,6 +2400,26 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
       supabase.removeChannel(channel);
       window.removeEventListener(GUEST_MEDIA_CHANGED_EVENT, fetchItems);
     };
+  }, []);
+
+  const fetchReactions = async () => {
+    if (!supabase) return;
+    const { data, error } = await supabase.from("wedding_reactions").select("*");
+    if (error) { console.error(error); return; }
+    setReactions((data ?? []).map((row) => ({
+      id: row.id, emoji: row.emoji, mediaId: row.media_id ?? null, photoSrc: row.photo_src ?? null,
+      guestId: row.guest_id ?? null, timestamp: row.created_at,
+    })));
+  };
+
+  useEffect(() => {
+    if (!supabaseReady || !supabase) return;
+    fetchReactions();
+    const channel = supabase
+      .channel("guest_media_reactions_changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "wedding_reactions" }, fetchReactions)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   const fetchComments = async () => {
@@ -2594,17 +2499,6 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
     } finally {
       setUploading(false);
     }
-  };
-
-  const toggleLike = async (id: string) => {
-    if (!supabase) return;
-    const isLiked = likedByMe.has(id);
-    const { error } = await supabase.rpc("increment_like", { row_id: id, delta: isLiked ? -1 : 1 });
-    if (error) { console.error(error); return; }
-    const next = new Set(likedByMe);
-    if (isLiked) next.delete(id); else next.add(id);
-    setLikedByMe(next);
-    localStorage.setItem("guest_media_liked", JSON.stringify(Array.from(next)));
   };
 
   const handleDeleteMine = async (item: GuestMediaItem) => {
@@ -2724,7 +2618,7 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                 {visible.map((item, i) => {
-                  const liked = likedByMe.has(item.id);
+                  const itemReactionCount = reactions.filter((r) => r.mediaId === item.id).length;
                   const commentCount = comments.filter((c) => c.mediaId === item.id).length;
                   return (
                     <Reveal key={item.id} delay={Math.min(i * 0.03, 0.3)}>
@@ -2758,10 +2652,12 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
                           style={{ background: "linear-gradient(to top, rgba(0,0,0,0.6), transparent)" }}>
                           <span className="text-[9px] tracking-widest uppercase truncate" style={{ fontFamily: SANS, color: CREAM }}>{item.name}</span>
                           <div className="flex items-center gap-2 flex-shrink-0">
-                            <span className="flex items-center gap-1">
-                              <Heart style={{ width: 12, height: 12 }} fill={liked ? GOLD : "none"} stroke={CREAM} />
-                              <span className="text-[10px]" style={{ fontFamily: SANS, color: CREAM }}>{item.likes}</span>
-                            </span>
+                            {itemReactionCount > 0 && (
+                              <span className="flex items-center gap-1">
+                                <Heart style={{ width: 12, height: 12 }} fill={GOLD} stroke={CREAM} />
+                                <span className="text-[10px]" style={{ fontFamily: SANS, color: CREAM }}>{itemReactionCount}</span>
+                              </span>
+                            )}
                             {commentCount > 0 && (
                               <span className="flex items-center gap-1">
                                 <MessageCircle style={{ width: 12, height: 12 }} stroke={CREAM} />
@@ -2852,17 +2748,15 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
                 </motion.div>
 
                 <div className="p-5">
-                  <button
-                    onClick={() => toggleLike(activeItem.id)}
-                    className="flex items-center gap-2 mb-2 transition-transform active:scale-95"
-                  >
-                    <Heart
-                      style={{ width: 20, height: 20 }}
-                      fill={likedByMe.has(activeItem.id) ? GOLD : "none"}
-                      stroke={likedByMe.has(activeItem.id) ? GOLD : TAN}
+                  <div className="mb-4">
+                    <ItemReactions
+                      targetKey={`c:${activeItem.id}`}
+                      target={{ media_id: activeItem.id }}
+                      reactions={reactions.filter((r) => r.mediaId === activeItem.id)}
+                      guestId={guest?.id ?? null}
+                      onChanged={fetchReactions}
                     />
-                    <span className="text-sm" style={{ fontFamily: SANS, color: BROWN }}>{activeItem.likes} me gusta</span>
-                  </button>
+                  </div>
                   <div className="flex items-center justify-between gap-2 mb-5">
                     <p className="text-[10px] tracking-widest uppercase" style={{ fontFamily: SANS, color: GOLD }}>
                       Subido por {activeItem.name}
@@ -3196,105 +3090,114 @@ function NosotrosSection({ guest }: { guest: GuestRecord | null }) {
   );
 }
 
-// ─── Reacciones ─────────────────────────────────────────────────────────────
+// ─── Reacciones (integradas en cada foto/video de la galería) ──────────────
 
 const REACTIONS = [
   { emoji: "❤️", label: "Me encantó" },
-  { emoji: "😍", label: "Hermosa invitación" },
-  { emoji: "🎉", label: "Emocionado por asistir" },
-  { emoji: "🥰", label: "Felices por ustedes" },
+  { emoji: "😍", label: "Hermosa" },
+  { emoji: "🎉", label: "Emocionado" },
+  { emoji: "🥰", label: "Feliz" },
 ] as const;
 
-interface FloatingReaction {
+interface WeddingReaction {
   id: string;
   emoji: string;
-  x: number;
+  mediaId: string | null;
+  photoSrc: string | null;
+  guestId: string | null;
+  timestamp: string;
 }
 
-function ReactionsSection({ guest }: { guest: GuestRecord | null }) {
-  const [counts, setCounts] = useState<Record<string, number>>({});
-  const [floating, setFloating] = useState<FloatingReaction[]>([]);
+const MY_REACTIONS_KEY = "my_wedding_reactions";
 
-  const fetchCounts = async () => {
+function getMyReactionId(targetKey: string, emoji: string): string | null {
+  try {
+    const map = JSON.parse(localStorage.getItem(MY_REACTIONS_KEY) || "{}");
+    return map[`${targetKey}:${emoji}`] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function setMyReactionId(targetKey: string, emoji: string, id: string | null) {
+  try {
+    const map = JSON.parse(localStorage.getItem(MY_REACTIONS_KEY) || "{}");
+    if (id) map[`${targetKey}:${emoji}`] = id;
+    else delete map[`${targetKey}:${emoji}`];
+    localStorage.setItem(MY_REACTIONS_KEY, JSON.stringify(map));
+  } catch { /* localStorage no disponible */ }
+}
+
+/** Barra de reacciones para UNA foto/video puntual — reemplaza el botón de
+ *  "me gusta" único por 4 emojis, cada uno con su propio conteo en vivo.
+ *  `targetKey` identifica la foto (para recordar "ya reaccioné con esto" en
+ *  este dispositivo); `target` es lo que se guarda en Supabase. */
+function ItemReactions({ targetKey, target, reactions, guestId, onChanged }: {
+  targetKey: string;
+  target: { media_id: string; photo_src?: never } | { photo_src: string; media_id?: never };
+  reactions: WeddingReaction[];
+  guestId: string | null;
+  onChanged: () => void;
+}) {
+  const [flying, setFlying] = useState<{ id: string; emoji: string; x: number }[]>([]);
+
+  const countFor = (emoji: string) => reactions.filter((r) => r.emoji === emoji).length;
+
+  const toggle = async (emoji: string) => {
     if (!supabase) return;
-    const { data, error } = await supabase.from("wedding_reactions").select("emoji");
-    if (error) { console.error(error); return; }
-    const next: Record<string, number> = {};
-    (data ?? []).forEach((row) => { next[row.emoji] = (next[row.emoji] ?? 0) + 1; });
-    setCounts(next);
-  };
-
-  useEffect(() => {
-    if (!supabaseReady || !supabase) return;
-    fetchCounts();
-    const channel = supabase
-      .channel("wedding_reactions_changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "wedding_reactions" }, fetchCounts)
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, []);
-
-  const react = async (emoji: string) => {
+    const existingId = getMyReactionId(targetKey, emoji);
+    if (existingId) {
+      const { error } = await supabase.from("wedding_reactions").delete().eq("id", existingId);
+      if (!error) { setMyReactionId(targetKey, emoji, null); onChanged(); }
+      return;
+    }
     hapticTap();
     const flyId = crypto.randomUUID();
-    setFloating((prev) => [...prev, { id: flyId, emoji, x: (Math.random() - 0.5) * 40 }]);
-    window.setTimeout(() => setFloating((prev) => prev.filter((f) => f.id !== flyId)), 1400);
+    setFlying((prev) => [...prev, { id: flyId, emoji, x: (Math.random() - 0.5) * 30 }]);
+    window.setTimeout(() => setFlying((prev) => prev.filter((f) => f.id !== flyId)), 1200);
 
-    if (!supabase) return;
-    const { error } = await supabase.from("wedding_reactions").insert({ emoji, guest_id: guest?.id ?? null });
-    if (error) console.error(error);
-    else fetchCounts();
+    const { data, error } = await supabase.from("wedding_reactions").insert({ emoji, guest_id: guestId, ...target }).select().single();
+    if (!error && data) { setMyReactionId(targetKey, emoji, data.id); onChanged(); }
   };
 
   return (
-    <section className="py-16 px-6 text-center" style={{ background: "linear-gradient(160deg, #F2EDE3 0%, #FAF8F3 100%)" }}>
-      <Reveal>
-        <p className="text-[10px] tracking-[0.35em] uppercase mb-2" style={{ fontFamily: SANS, color: GOLD }}>
-          Reacciona
-        </p>
-        <h3 className="text-2xl mb-8" style={{ fontFamily: SCRIPT, color: "#5C4A32" }}>
-          Así se sienten nuestros invitados
-        </h3>
-      </Reveal>
-
-      <Reveal delay={0.1}>
-        <div className="flex justify-center gap-4 sm:gap-6 flex-wrap">
-          {REACTIONS.map((r) => (
-            <div key={r.emoji} className="relative flex flex-col items-center gap-2">
-              <AnimatePresence>
-                {floating.filter((f) => f.emoji === r.emoji).map((f) => (
-                  <motion.span
-                    key={f.id}
-                    initial={{ opacity: 1, y: 0, x: 0, scale: 0.6 }}
-                    animate={{ opacity: 0, y: -70, x: f.x, scale: 1.3 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 1.3, ease: "easeOut" }}
-                    className="absolute -top-2 text-2xl pointer-events-none select-none"
-                  >
-                    {r.emoji}
-                  </motion.span>
-                ))}
-              </AnimatePresence>
-              <motion.button
-                onClick={() => react(r.emoji)}
-                whileTap={{ scale: 0.85 }}
-                whileHover={{ scale: 1.08 }}
-                className="w-16 h-16 sm:w-[72px] sm:h-[72px] rounded-full flex items-center justify-center text-3xl"
-                style={{ background: CREAM, border: `1px solid rgba(196,168,130,0.3)`, boxShadow: "0 4px 14px rgba(60,45,20,0.1)" }}
-              >
-                {r.emoji}
-              </motion.button>
-              <p className="text-[9px] tracking-widest uppercase max-w-[80px]" style={{ fontFamily: SANS, color: TAN }}>
-                {r.label}
-              </p>
-              <p className="text-sm" style={{ fontFamily: SERIF, color: BROWN }}>
-                {counts[r.emoji] ?? 0}
-              </p>
-            </div>
-          ))}
-        </div>
-      </Reveal>
-    </section>
+    <div className="flex items-center gap-1.5 flex-wrap">
+      {REACTIONS.map((r) => {
+        const mine = !!getMyReactionId(targetKey, r.emoji);
+        const count = countFor(r.emoji);
+        return (
+          <div key={r.emoji} className="relative">
+            <AnimatePresence>
+              {flying.filter((f) => f.emoji === r.emoji).map((f) => (
+                <motion.span
+                  key={f.id}
+                  initial={{ opacity: 1, y: 0, x: 0, scale: 0.6 }}
+                  animate={{ opacity: 0, y: -46, x: f.x, scale: 1.25 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 1, ease: "easeOut" }}
+                  className="absolute -top-1 left-1/2 -translate-x-1/2 text-lg pointer-events-none select-none"
+                >
+                  {r.emoji}
+                </motion.span>
+              ))}
+            </AnimatePresence>
+            <motion.button
+              onClick={() => toggle(r.emoji)}
+              whileTap={{ scale: 0.85 }}
+              className="flex items-center gap-1 px-2.5 py-1.5 text-sm"
+              style={{
+                background: mine ? "rgba(196,168,130,0.18)" : "rgba(196,168,130,0.06)",
+                border: `1px solid ${mine ? GOLD : "rgba(196,168,130,0.25)"}`,
+                borderRadius: 999,
+              }}
+            >
+              <span>{r.emoji}</span>
+              {count > 0 && <span className="text-xs" style={{ fontFamily: SANS, color: mine ? GOLD : TAN }}>{count}</span>}
+            </motion.button>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -3647,191 +3550,6 @@ function LoveNotesContent({ guest }: { guest: GuestRecord | null }) {
           {justSent && (
             <p className="text-center text-xs" style={{ fontFamily: SANS, color: "#8A6A3A" }}>
               ¡Gracias por tu nota! Ya está en el muro. 🤍
-            </p>
-          )}
-        </form>
-      </Reveal>
-    </div>
-  );
-}
-
-// ─── Muro de mensajes para los novios ──────────────────────────────────────
-
-function MessagesWallContent({ guest }: { guest: GuestRecord | null }) {
-  const [messages, setMessages] = useState<WeddingMessage[]>([]);
-  const [form, setForm] = useState({ name: "", message: "" });
-  const [loading, setLoading] = useState(false);
-  const [justSent, setJustSent] = useState(false);
-  const [mineIds, setMineIds] = useState<Set<string>>(() => readMine(MY_MESSAGES_KEY));
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-
-  const fetchMessages = async () => {
-    if (!supabase) return;
-    const { data, error } = await supabase.from("wedding_messages").select("*").order("created_at", { ascending: true });
-    if (error) { console.error(error); return; }
-    setMessages((data ?? []).map((row) => ({
-      id: row.id, guestId: row.guest_id, name: row.name, message: row.message, timestamp: row.created_at,
-    })));
-  };
-
-  useEffect(() => {
-    if (!supabaseReady || !supabase) return;
-    fetchMessages();
-    const channel = supabase
-      .channel("wedding_messages_changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "wedding_messages" }, fetchMessages)
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, []);
-
-  const scrollerRef = useRef<HTMLDivElement>(null);
-  const interactingRef = useRef(false);
-  const resumeTimeoutRef = useRef<number | undefined>(undefined);
-
-  useEffect(() => {
-    let raf: number;
-    const step = () => {
-      const el = scrollerRef.current;
-      if (el && !interactingRef.current && el.scrollWidth > el.clientWidth + 4) {
-        el.scrollLeft += 0.4;
-        const max = el.scrollWidth - el.clientWidth;
-        if (el.scrollLeft >= max) el.scrollLeft = 0;
-      }
-      raf = requestAnimationFrame(step);
-    };
-    raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
-  }, []);
-
-  const pauseAutoScroll = () => {
-    interactingRef.current = true;
-    window.clearTimeout(resumeTimeoutRef.current);
-  };
-  const scheduleResume = () => {
-    window.clearTimeout(resumeTimeoutRef.current);
-    resumeTimeoutRef.current = window.setTimeout(() => { interactingRef.current = false; }, 2200);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.name.trim() || !form.message.trim()) return;
-    setLoading(true);
-    try {
-      if (supabaseReady && supabase) {
-        const { data: inserted, error } = await supabase.from("wedding_messages").insert({
-          guest_id: guest?.id ?? null,
-          name: form.name.trim(),
-          message: form.message.trim(),
-        }).select().single();
-        if (error) throw error;
-        if (inserted) {
-          rememberMine(MY_MESSAGES_KEY, inserted.id);
-          setMineIds(readMine(MY_MESSAGES_KEY));
-        }
-        await fetchMessages();
-      }
-      setForm({ name: "", message: "" });
-      setJustSent(true);
-      hapticTap();
-      setTimeout(() => setJustSent(false), 4000);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!supabase) return;
-    setDeletingId(id);
-    try {
-      const { error } = await supabase.from("wedding_messages").delete().eq("id", id);
-      if (error) throw error;
-      await fetchMessages();
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setDeletingId(null);
-    }
-  };
-
-  const cardBg = (i: number) => (i % 3 === 0 ? "#FAF6EE" : i % 3 === 1 ? "#F5EFE2" : "#F0EBD8");
-
-  return (
-    <div className="max-w-2xl mx-auto">
-      <Ornament />
-      <p className="text-sm leading-relaxed max-w-sm mx-auto mt-6 mb-10 text-center" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
-        Déjanos un mensaje especial — quedará guardado para siempre como un recuerdo de este día.
-      </p>
-
-      {messages.length > 0 && (
-        <div
-          ref={scrollerRef}
-          className="gallery-scroller flex gap-4 overflow-x-auto pb-2 mb-10"
-          style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}
-          onMouseEnter={pauseAutoScroll}
-          onMouseLeave={scheduleResume}
-          onTouchStart={pauseAutoScroll}
-          onTouchEnd={scheduleResume}
-        >
-          {messages.map((m, i) => (
-            <div key={m.id} className="flex-shrink-0 p-5 relative" style={{
-              width: 220,
-              background: cardBg(i),
-              border: `1px solid rgba(196,168,130,0.22)`,
-              borderRadius: 2,
-              boxShadow: "0 2px 12px rgba(0,0,0,0.04)",
-            }}>
-              <Mail style={{ width: 14, height: 14, color: GOLD, position: "absolute", top: 14, right: 14 }} />
-              <p className="text-sm leading-relaxed mb-3" style={{ fontFamily: SERIF, color: BROWN, fontStyle: "italic" }}>
-                "{m.message}"
-              </p>
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-[10px] tracking-widest uppercase" style={{ fontFamily: SANS, color: GOLD }}>
-                  — {m.name}
-                </p>
-                {mineIds.has(m.id) && (
-                  <button
-                    onClick={() => handleDelete(m.id)}
-                    disabled={deletingId === m.id}
-                    className="text-[9px] tracking-widest uppercase flex-shrink-0 disabled:opacity-50"
-                    style={{ fontFamily: SANS, color: "#C4604A" }}
-                  >
-                    {deletingId === m.id ? "…" : "Eliminar"}
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <Reveal delay={0.15}>
-        <form onSubmit={handleSubmit} className="max-w-md mx-auto space-y-5">
-          <input
-            type="text" placeholder="Tu nombre" required
-            className="w-full px-0 py-3 bg-transparent border-b text-sm outline-none"
-            style={{ fontFamily: SANS, color: BROWN, borderBottomColor: "rgba(196,168,130,0.4)", borderBottomStyle: "solid", borderBottomWidth: 1 }}
-            value={form.name}
-            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-          />
-          <textarea
-            placeholder="Escribe tu mensaje para los novios…"
-            rows={4} required
-            className="w-full px-0 py-3 bg-transparent border-b text-sm outline-none resize-none"
-            style={{ fontFamily: SANS, color: BROWN, borderBottomColor: "rgba(196,168,130,0.4)", borderBottomStyle: "solid", borderBottomWidth: 1 }}
-            value={form.message}
-            onChange={(e) => setForm((f) => ({ ...f, message: e.target.value }))}
-          />
-          <GoldButton type="submit" disabled={loading} className="w-full py-4">
-            {loading
-              ? <div className="w-4 h-4 border-2 border-white/25 border-t-white rounded-full animate-spin" />
-              : <><Mail style={{ width: 14, height: 14 }} /> Enviar mensaje</>
-            }
-          </GoldButton>
-          {justSent && (
-            <p className="text-center text-xs" style={{ fontFamily: SANS, color: "#8A6A3A" }}>
-              ¡Gracias por tu mensaje! Ya está en el muro. 💌
             </p>
           )}
         </form>
@@ -5637,7 +5355,6 @@ export default function App() {
             <VideoSection />
             <MoreDetailsHub rsvpResult={rsvpResult} onRsvpSuccess={handleRsvpSuccess} guestName={guestName} guest={guest} />
             <NosotrosSection guest={guest} />
-            <ReactionsSection guest={guest} />
             <MapSection />
             <Footer onAdminClick={() => setAdmin(true)} />
             <MusicPlayer
