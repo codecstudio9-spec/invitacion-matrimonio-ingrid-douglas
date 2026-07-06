@@ -1177,25 +1177,27 @@ function HeroSection() {
           <CoupleSeal size={48} />
         </motion.div>
 
-        <motion.h1
-          initial={{ opacity: 0, scale: 0.92 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 1.6, delay: 0.6 }}
-          style={{ fontFamily: SCRIPT, color: CREAM, lineHeight: 1.15 }}
-          className="text-6xl sm:text-7xl md:text-8xl mb-4"
-        >
-          Ingrid y Douglas
-        </motion.h1>
+        <div style={{ transform: "translateY(30px)" }}>
+          <motion.h1
+            initial={{ opacity: 0, scale: 0.92 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 1.6, delay: 0.6 }}
+            style={{ fontFamily: SCRIPT, color: CREAM, lineHeight: 1.15 }}
+            className="text-6xl sm:text-7xl md:text-8xl mb-4"
+          >
+            Ingrid y Douglas
+          </motion.h1>
 
-        <motion.p
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1.2, delay: 1.2 }}
-          className="text-[17px] tracking-[0.32em] uppercase"
-          style={{ fontFamily: SANS, color: "#E8DECE", fontWeight: 300 }}
-        >
-          Nos casamos
-        </motion.p>
+          <motion.p
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 1.2, delay: 1.2 }}
+            className="text-[17px] tracking-[0.32em] uppercase"
+            style={{ fontFamily: SANS, color: "#E8DECE", fontWeight: 300 }}
+          >
+            Nos casamos
+          </motion.p>
+        </div>
 
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.4 }} className="my-6">
           <Ornament />
