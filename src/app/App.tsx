@@ -7,7 +7,7 @@ import {
   ExternalLink, Heart, Star, Lock, Search, MessageCircle,
   Check, Users, PenLine, ChevronLeft, ChevronRight,
   Shirt, BookOpen, Images, Gift, Banknote, Music, Eye, EyeOff,
-  Home, DollarSign, MessageSquare,
+  Home, DollarSign, MessageSquare, Plane, Hotel, Mail, Download, Smile,
 } from "lucide-react";
 import { supabase, supabaseReady, GUEST_MEDIA_BUCKET, VIDEO_GREETINGS_BUCKET } from "./supabase";
 
@@ -46,6 +46,7 @@ const WEDDING_CONFIG_ID = "main_config";
 // una foto/video/nota ve el botón de eliminar sobre ella.
 const MY_MEDIA_KEY = "my_guest_media_ids";
 const MY_NOTES_KEY = "my_love_notes_ids";
+const MY_MESSAGES_KEY = "my_wedding_messages_ids";
 
 function rememberMine(storageKey: string, id: string) {
   try {
@@ -84,6 +85,12 @@ async function deleteStorageObject(bucket: string, publicUrl: string) {
 const GUEST_MEDIA_CHANGED_EVENT = "guest-media-changed";
 function broadcastGuestMediaChanged() {
   window.dispatchEvent(new Event(GUEST_MEDIA_CHANGED_EVENT));
+}
+
+// Vibración breve en dispositivos compatibles (Android sobre todo — iOS
+// Safari no expone la API, así que ahí simplemente no hace nada).
+function hapticTap() {
+  try { navigator.vibrate?.(12); } catch { /* no soportado, no pasa nada */ }
 }
 
 // Si un archivo ya no existe en Storage (por ejemplo, se borró el archivo
@@ -144,9 +151,87 @@ interface LoveNote {
   timestamp: string;
 }
 
+interface WeddingMessage {
+  id: string;
+  guestId: string | null;
+  name: string;
+  message: string;
+  timestamp: string;
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const WEDDING_DATE = new Date("2026-12-05T16:30:00-05:00");
+const WEDDING_LOCATION = "Playa Francés, Tolú, Sucre, Colombia";
+
+// ─── Calendario ────────────────────────────────────────────────────────────
+// Helpers para "agendar" eventos en el calendario del invitado sin depender
+// de ninguna librería — un .ics genérico funciona en Apple Calendar y casi
+// cualquier otra app, y Google/Outlook además tienen su propio link directo.
+
+interface CalendarEvent {
+  title: string;
+  description: string;
+  location?: string;
+  start: Date;
+  end: Date;
+}
+
+const icsDate = (d: Date) => d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+
+function buildICS(ev: CalendarEvent): string {
+  return [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Ingrid & Douglas//Boda 2026//ES",
+    "BEGIN:VEVENT",
+    `UID:${crypto.randomUUID()}@ingrid-douglas.boda`,
+    `DTSTAMP:${icsDate(new Date())}`,
+    `DTSTART:${icsDate(ev.start)}`,
+    `DTEND:${icsDate(ev.end)}`,
+    `SUMMARY:${ev.title}`,
+    `DESCRIPTION:${ev.description.replace(/\n/g, "\\n")}`,
+    ev.location ? `LOCATION:${ev.location}` : "",
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ].filter(Boolean).join("\r\n");
+}
+
+function downloadICS(filename: string, ev: CalendarEvent) {
+  const blob = new Blob([buildICS(ev)], { type: "text/calendar;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function googleCalendarUrl(ev: CalendarEvent): string {
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: ev.title,
+    dates: `${icsDate(ev.start)}/${icsDate(ev.end)}`,
+    details: ev.description,
+    location: ev.location || "",
+  });
+  return `https://www.google.com/calendar/render?${params.toString()}`;
+}
+
+function outlookCalendarUrl(ev: CalendarEvent): string {
+  const params = new URLSearchParams({
+    path: "/calendar/action/compose",
+    rru: "addevent",
+    subject: ev.title,
+    startdt: ev.start.toISOString(),
+    enddt: ev.end.toISOString(),
+    body: ev.description,
+    location: ev.location || "",
+  });
+  return `https://outlook.live.com/calendar/0/deeplink/compose?${params.toString()}`;
+}
 
 const IMG = {
   beach:   "/hero.jpeg",
@@ -425,6 +510,10 @@ function MoreDetailsHub({ rsvpResult, onRsvpSuccess, guestName, guest }: { rsvpR
     { key: "vestuario",  icon: Shirt,    label: "Código de Vestuario",  title: "Nuestro Estilo",       content: <DressCodeContent />, featured: false },
     { key: "historia",   icon: BookOpen, label: "Nuestra Historia",     title: "Nuestra Historia",     content: <OurStoryContent />,  featured: false },
     { key: "notas",      icon: PenLine,  label: "Nota de Amor",         title: "Déjanos tu nota",      content: <LoveNotesContent guest={guest} />, featured: false },
+    { key: "mensajes",   icon: Mail,     label: "Mensajes para los novios", title: "Déjanos un mensaje", content: <MessagesWallContent guest={guest} />, featured: false },
+    { key: "calendario", icon: Calendar, label: "Calendario",           title: "Calendario Inteligente", content: <SmartCalendarContent />, featured: false },
+    { key: "viaje",      icon: Plane,    label: "Agenda de Viaje",      title: "Agenda de Viaje",      content: <TravelPlanContent />, featured: false },
+    { key: "hospedaje",  icon: Hotel,    label: "Hospedaje",            title: "Hospedaje",            content: <LodgingInfoContent />, featured: false },
     { key: "regalos",    icon: Gift,     label: "Mesa de Regalos",      title: "Mesa de Regalos",      content: <GiftsContent />,     featured: false },
     { key: "rsvp",       icon: Check,    label: "Confirmar Asistencia", title: rsvpResult ? "¡Gracias!" : "Confirmar Asistencia",
       content: <RSVPHubContent rsvpResult={rsvpResult} onSuccess={onRsvpSuccess} guestName={guestName} guest={guest} />, featured: true },
@@ -440,9 +529,11 @@ function MoreDetailsHub({ rsvpResult, onRsvpSuccess, guestName, guest }: { rsvpR
         <Reveal>
           <div className="grid grid-cols-2 gap-x-6 gap-y-10">
             {items.map((item) => (
-              <button
+              <motion.button
                 key={item.key}
-                onClick={() => setOpen(item.key)}
+                onClick={() => { hapticTap(); setOpen(item.key); }}
+                whileTap={{ scale: 0.93 }}
+                transition={{ duration: 0.15 }}
                 className="flex flex-col items-center gap-3 group"
               >
                 <div className="relative flex items-center justify-center" style={{ height: 64 }}>
@@ -475,11 +566,11 @@ function MoreDetailsHub({ rsvpResult, onRsvpSuccess, guestName, guest }: { rsvpR
                     <item.icon style={{ width: 22, height: 22, color: CREAM }} />
                   </motion.div>
                 </div>
-                <p className="text-[9px] tracking-[0.2em] uppercase text-center leading-tight"
+                <p className="text-[10.5px] tracking-[0.18em] uppercase text-center leading-tight"
                   style={{ fontFamily: SANS, color: GOLD, fontWeight: 500 }}>
                   {item.label}
                 </p>
-              </button>
+              </motion.button>
             ))}
           </div>
         </Reveal>
@@ -533,12 +624,17 @@ function GoldButton({ children, onClick, type = "button", disabled = false, clas
   type?: "button" | "submit"; disabled?: boolean; className?: string;
 }) {
   return (
-    <button type={type} onClick={onClick} disabled={disabled}
-      className={`flex items-center justify-center gap-2 px-6 py-3 text-xs tracking-[0.3em] uppercase transition-all duration-300 disabled:opacity-50 hover:opacity-90 ${className}`}
+    <motion.button
+      type={type}
+      onClick={disabled ? undefined : () => { hapticTap(); onClick?.(); }}
+      disabled={disabled}
+      whileTap={disabled ? undefined : { scale: 0.96 }}
+      transition={{ duration: 0.15 }}
+      className={`flex items-center justify-center gap-2 px-6 py-3 text-xs tracking-[0.3em] uppercase transition-opacity duration-300 disabled:opacity-50 hover:opacity-90 ${className}`}
       style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DARK})`, color: CREAM, fontFamily: SANS, borderRadius: 2, fontWeight: 500 }}
     >
       {children}
-    </button>
+    </motion.button>
   );
 }
 
@@ -1067,7 +1163,7 @@ function HeroSection() {
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1.2, delay: 1.6 }}
-          className="text-[15px] max-w-sm leading-relaxed"
+          className="text-[18px] max-w-sm leading-relaxed"
           style={{ fontFamily: SANS, color: "rgba(235,222,205,0.85)", fontWeight: 300 }}
         >
           Con la bendición de Dios, la compañía de nuestras familias y la presencia de aquellos que más amamos,
@@ -1078,7 +1174,7 @@ function HeroSection() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 1.2, delay: 1.9 }}
-          className="text-[15px] mt-4 italic"
+          className="text-[18px] mt-4 italic"
           style={{ fontFamily: SCRIPT, color: "rgba(230,215,195,0.75)" }}
         >
           "Por tanto, lo que Dios juntó, no lo separe el hombre" — Marcos 10:9
@@ -1127,7 +1223,7 @@ function DetailsSection() {
               Ingrid y Douglas
             </h2>
             <Ornament />
-            <p className="text-sm leading-loose mt-6 max-w-lg mx-auto" style={{ fontFamily: SANS, color: TAN, fontWeight: 300, fontStyle: "italic" }}>
+            <p className="text-base leading-loose mt-6 max-w-lg mx-auto" style={{ fontFamily: SANS, color: TAN, fontWeight: 300, fontStyle: "italic" }}>
               "Mi amado habló, y me dijo: Levántate, oh amiga mía, hermosa mía, y ven. Porque he aquí ha pasado el invierno, se ha mudado, la lluvia se fue; se han mostrado las flores en la tierra, el tiempo de la canción ha venido, y en nuestro país se ha oído la voz de la tórtola."
             </p>
             <p className="text-[10px] tracking-[0.35em] uppercase mt-3" style={{ fontFamily: SANS, color: GOLD }}>
@@ -1169,8 +1265,8 @@ function DetailsSection() {
             <h3 className="text-2xl mb-4" style={{ fontFamily: SCRIPT, color: "#5C4A32" }}>
               Nuestro Agradecimiento
             </h3>
-            <p className="text-sm leading-relaxed" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
-              No hay palabras suficientes para expresar nuestra gratitud en que ustedes sean parte de este hermoso sueño. 
+            <p className="text-base leading-relaxed" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
+              No hay palabras suficientes para expresar nuestra gratitud en que ustedes sean parte de este hermoso sueño.
               Su presencia y amor significan el mundo para nosotros. Gracias por acompañarnos en este viaje extraordinario 
               y por celebrar con nosotros uno de los momentos más importantes de nuestras vidas.
             </p>
@@ -1213,7 +1309,7 @@ function VerseBanner() {
             <rect x="12" y="0" width="4" height="40" rx="2" fill={GOLD} opacity="0.75" />
             <rect x="0" y="12" width="28" height="4" rx="2" fill={GOLD} opacity="0.75" />
           </svg>
-          <p className="text-[22px] sm:text-[26px] leading-relaxed mb-4" style={{ fontFamily: SCRIPT, color: "#EDE4D0" }}>
+          <p className="text-[25px] sm:text-[29px] leading-relaxed mb-4" style={{ fontFamily: SCRIPT, color: "#EDE4D0" }}>
             "El amor es sufrido, es benigno; el amor no tiene envidia, el amor no es jactancioso, no se envanece;<br />
             no hace nada indebido, no busca lo suyo, no se irrita, no guarda rencor;<br />
             no se goza de la injusticia, mas se goza de la verdad.<br />
@@ -1412,6 +1508,171 @@ function TimelineContent() {
   );
 }
 
+// ─── Calendario Inteligente ────────────────────────────────────────────────
+
+const PRE_WEDDING_TASKS = [
+  { key: "tiquetes",  label: "Comprar tiquetes",        icon: Plane, daysBefore: 90 },
+  { key: "hospedaje", label: "Reservar hospedaje",       icon: Hotel, daysBefore: 75 },
+  { key: "outfit",    label: "Comprar vestido o traje",  icon: Shirt, daysBefore: 45 },
+  { key: "permiso",   label: "Solicitar permiso laboral",icon: Check, daysBefore: 30 },
+  { key: "viaje",     label: "Organizar viaje",          icon: Navigation, daysBefore: 21 },
+  { key: "regalo",    label: "Preparar regalo",          icon: Gift, daysBefore: 14 },
+];
+
+function SmartCalendarContent() {
+  const weddingEnd = new Date(WEDDING_DATE.getTime() + 4 * 60 * 60 * 1000);
+  const weddingEvent: CalendarEvent = {
+    title: "Boda de Ingrid & Douglas",
+    description: "¡Nos casamos! Te esperamos para celebrar juntos este día tan especial.",
+    location: WEDDING_LOCATION,
+    start: WEDDING_DATE,
+    end: weddingEnd,
+  };
+
+  return (
+    <div className="max-w-lg mx-auto">
+      <Ornament />
+      <p className="text-sm leading-relaxed max-w-sm mx-auto mt-2 mb-8 text-center" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
+        Agenda nuestra boda y prepárate con tiempo — te dejamos recordatorios listos para descargar.
+      </p>
+
+      <Reveal>
+        <p className="text-[10px] tracking-[0.35em] uppercase mb-4 text-center" style={{ fontFamily: SANS, color: GOLD }}>
+          Agendar la boda · 5 Dic 2026 · 4:30 PM
+        </p>
+        <div className="flex flex-col sm:flex-row gap-3 justify-center mb-10">
+          <a
+            href={googleCalendarUrl(weddingEvent)} target="_blank" rel="noopener noreferrer"
+            onClick={hapticTap}
+            className="flex items-center justify-center gap-2 px-5 py-3 text-xs tracking-widest uppercase transition-transform active:scale-95"
+            style={{ fontFamily: SANS, background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DARK})`, color: CREAM, borderRadius: 2 }}
+          >
+            <Calendar style={{ width: 14, height: 14 }} /> Google Calendar
+          </a>
+          <a
+            href={outlookCalendarUrl(weddingEvent)} target="_blank" rel="noopener noreferrer"
+            onClick={hapticTap}
+            className="flex items-center justify-center gap-2 px-5 py-3 text-xs tracking-widest uppercase transition-transform active:scale-95"
+            style={{ fontFamily: SANS, color: BROWN, border: `1px solid rgba(196,168,130,0.4)`, borderRadius: 2 }}
+          >
+            <Calendar style={{ width: 14, height: 14 }} /> Outlook
+          </a>
+          <button
+            onClick={() => { hapticTap(); downloadICS("boda-ingrid-douglas.ics", weddingEvent); }}
+            className="flex items-center justify-center gap-2 px-5 py-3 text-xs tracking-widest uppercase transition-transform active:scale-95"
+            style={{ fontFamily: SANS, color: BROWN, border: `1px solid rgba(196,168,130,0.4)`, borderRadius: 2 }}
+          >
+            <Download style={{ width: 14, height: 14 }} /> Apple / .ics
+          </button>
+        </div>
+      </Reveal>
+
+      <Reveal delay={0.1}>
+        <p className="text-[10px] tracking-[0.35em] uppercase mb-4 text-center" style={{ fontFamily: SANS, color: GOLD }}>
+          Eventos previos — recordatorios sugeridos
+        </p>
+        <div className="space-y-2">
+          {PRE_WEDDING_TASKS.map((task) => {
+            const suggested = new Date(WEDDING_DATE.getTime() - task.daysBefore * 24 * 60 * 60 * 1000);
+            const dayAfter = new Date(suggested.getTime() + 24 * 60 * 60 * 1000);
+            return (
+              <div key={task.key} className="flex items-center justify-between gap-3 px-4 py-3" style={{ border: `1px solid rgba(196,168,130,0.2)`, borderRadius: 4 }}>
+                <div className="flex items-center gap-3 min-w-0">
+                  <task.icon style={{ width: 16, height: 16, color: GOLD, flexShrink: 0 }} />
+                  <div className="min-w-0">
+                    <p className="text-sm truncate" style={{ fontFamily: SANS, color: BROWN }}>{task.label}</p>
+                    <p className="text-[10px]" style={{ fontFamily: SANS, color: TAN }}>
+                      Sugerido: {suggested.toLocaleDateString("es-CO", { day: "numeric", month: "long" })}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    hapticTap();
+                    downloadICS(`${task.key}.ics`, {
+                      title: task.label,
+                      description: `Recordatorio para la boda de Ingrid & Douglas (5 Dic 2026).`,
+                      start: suggested,
+                      end: dayAfter,
+                    });
+                  }}
+                  className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-transform active:scale-90"
+                  style={{ border: `1px solid rgba(196,168,130,0.4)`, color: GOLD }}
+                  aria-label={`Descargar recordatorio: ${task.label}`}
+                >
+                  <Download style={{ width: 14, height: 14 }} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </Reveal>
+    </div>
+  );
+}
+
+// ─── Agenda de Viaje ───────────────────────────────────────────────────────
+
+function TravelPlanContent() {
+  const blocks = [
+    {
+      icon: Plane,
+      title: "Compra de tiquetes",
+      desc: "El aeropuerto más cercano a Tolú es el de Corozal o el de Montería; Cartagena también es una buena opción con más vuelos disponibles. Te recomendamos comprar con tiempo — los precios suben mucho cerca de diciembre.",
+    },
+    {
+      icon: Navigation,
+      title: "Transporte recomendado",
+      desc: "Desde el aeropuerto hasta Tolú puedes tomar transporte terrestre o coordinar con nosotros — escríbenos por WhatsApp y te ayudamos a organizarlo.",
+    },
+    {
+      icon: Calendar,
+      title: "Fechas importantes",
+      desc: "La boda es el 5 de diciembre de 2026 a las 4:30 PM. Te sugerimos llegar uno o dos días antes para descansar del viaje.",
+    },
+  ];
+
+  return (
+    <div className="max-w-lg mx-auto">
+      <Ornament />
+      <div className="space-y-6 mt-6">
+        {blocks.map((b, i) => (
+          <Reveal key={b.title} delay={i * 0.08}>
+            <div className="flex gap-4 items-start text-left">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "rgba(196,168,130,0.14)" }}>
+                <b.icon style={{ width: 17, height: 17, color: GOLD }} />
+              </div>
+              <div>
+                <h3 className="text-base mb-1" style={{ fontFamily: SERIF, color: BROWN }}>{b.title}</h3>
+                <p className="text-sm leading-relaxed" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>{b.desc}</p>
+              </div>
+            </div>
+          </Reveal>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Hospedaje (información) ────────────────────────────────────────────────
+
+function LodgingInfoContent() {
+  return (
+    <div className="max-w-lg mx-auto text-center">
+      <Ornament />
+      <p className="text-sm leading-relaxed max-w-sm mx-auto mt-2 mb-8" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
+        Estamos organizando algunas opciones de hospedaje cerca del lugar del evento en Playa Francés, Tolú. Muy pronto actualizaremos esta sección con hoteles recomendados, distancias exactas y tarifas especiales para nuestros invitados.
+      </p>
+      <div className="p-6" style={{ border: `1px dashed rgba(196,168,130,0.4)`, borderRadius: 4 }}>
+        <Hotel style={{ width: 22, height: 22, color: GOLD, margin: "0 auto 10px" }} />
+        <p className="text-sm" style={{ fontFamily: SERIF, color: BROWN, fontStyle: "italic" }}>
+          Si prefieres asegurar tu cupo de hospedaje en el mismo lugar del evento, puedes reservarlo directamente al confirmar tu asistencia — los cupos son limitados.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Dress Code Section ───────────────────────────────────────────────────────
 
 function DressCodeContent() {
@@ -1429,12 +1690,12 @@ function DressCodeContent() {
   return (
     <div className="max-w-2xl mx-auto">
       <Ornament />
-      <p className="text-sm leading-relaxed max-w-sm mx-auto mt-6 text-center" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
+      <p className="text-lg leading-relaxed max-w-sm mx-auto mt-6 text-center" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
         Acompáñanos usando prendas con tonos claros inspirados en la playa. Una paleta elegante y fresca para este hermoso día.
       </p>
 
       {/* Color palette */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-12 mt-8">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-5 mb-12 mt-9">
         {colors.map((color, idx) => (
           <Reveal key={idx} delay={idx * 0.05}>
             <div className="flex flex-col items-center gap-3">
@@ -1445,11 +1706,11 @@ function DressCodeContent() {
                   border: `2px solid ${GOLD}`,
                 }}
               />
-              <p className="text-sm" style={{ fontFamily: SANS, color: BROWN, fontWeight: 500 }}>
+              <p className="text-base" style={{ fontFamily: SANS, color: BROWN, fontWeight: 500 }}>
                 {color.name}
               </p>
               {color.note && (
-                <p className="text-[10px] italic -mt-1.5" style={{ fontFamily: SANS, color: GOLD }}>
+                <p className="text-xs italic -mt-1.5" style={{ fontFamily: SANS, color: GOLD }}>
                   {color.note}
                 </p>
               )}
@@ -1470,7 +1731,7 @@ function DressCodeContent() {
           <h3 className="text-lg mb-4" style={{ fontFamily: SERIF, color: BROWN }}>
             Recomendaciones
           </h3>
-          <ul className="space-y-3 text-sm" style={{ fontFamily: SANS, color: TAN }}>
+          <ul className="space-y-4 text-base" style={{ fontFamily: SANS, color: TAN }}>
             <li className="flex gap-3">
               <span style={{ color: GOLD }}>✓</span>
               <span>Colores pasteles y tonos beige son bienvenidos</span>
@@ -1717,6 +1978,9 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
     setCommentForm((f) => ({ ...f, message: "" }));
   };
 
+  const [zoomed, setZoomed] = useState(false);
+  useEffect(() => { setZoomed(false); }, [activeItem?.key]);
+
   const goTo = (dir: 1 | -1) => {
     const idx = activeItem ? items.findIndex((i) => i.key === activeItem.key) : -1;
     if (idx < 0) return;
@@ -1779,7 +2043,7 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
   return (
     <>
       <div className="max-w-5xl mx-auto">
-          <p className="text-xs mt-2 mb-8 text-center" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
+          <p className="text-sm mt-2 mb-8 text-center" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
             Detente sobre una foto para verla mejor, dale like y déjanos tu comentario
           </p>
 
@@ -1946,10 +2210,23 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
                 <X style={{ width: 16, height: 16, color: CREAM }} />
               </button>
 
-              <div className="relative" style={{ aspectRatio: "4/5" }}>
+              <motion.div
+                className="relative overflow-hidden" style={{ aspectRatio: "4/5", touchAction: "pan-y" }}
+                drag={zoomed ? false : "x"}
+                dragConstraints={{ left: 0, right: 0 }}
+                dragElastic={0.6}
+                onDragEnd={(_e, info) => {
+                  if (info.offset.x < -70) goTo(1);
+                  else if (info.offset.x > 70) goTo(-1);
+                }}
+              >
                 {itemType(activeItem) === "photo"
-                  ? <img
+                  ? <motion.img
                       src={itemSrc(activeItem)} alt="" className="w-full h-full object-cover"
+                      animate={{ scale: zoomed ? 2.2 : 1 }}
+                      transition={{ duration: 0.25 }}
+                      onDoubleClick={() => setZoomed((z) => !z)}
+                      style={{ cursor: zoomed ? "zoom-out" : "zoom-in" }}
                       onError={() => {
                         if (activeItem.kind !== "community") return;
                         const id = activeItem.media.id;
@@ -1984,7 +2261,7 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
                 >
                   <ChevronRight style={{ width: 20, height: 20, color: CREAM }} />
                 </button>
-              </div>
+              </motion.div>
 
               <div className="p-5">
                 <div className="flex items-center justify-between gap-2 mb-5">
@@ -2220,11 +2497,20 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
 
   const visible = activeFolder === "Todas" ? items : items.filter((i) => i.folder === activeFolder);
 
+  const [zoomed, setZoomed] = useState(false);
+  useEffect(() => { setZoomed(false); }, [activeItem?.id]);
+
+  const goToItem = (dir: 1 | -1) => {
+    const idx = activeItem ? visible.findIndex((i) => i.id === activeItem.id) : -1;
+    if (idx < 0 || visible.length === 0) return;
+    setActiveItem(visible[(idx + dir + visible.length) % visible.length]);
+  };
+
   return (
     <>
     <div className="max-w-4xl mx-auto">
           <Ornament />
-          <p className="text-xs mt-2 mb-8 max-w-md mx-auto text-center" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
+          <p className="text-sm mt-2 mb-8 max-w-md mx-auto text-center" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
             Sube las fotos y videos que tomes el día de la boda — quedan aquí para que todos, incluidos nosotros, las veamos juntos.
           </p>
 
@@ -2389,10 +2675,23 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
                   <X style={{ width: 16, height: 16, color: CREAM }} />
                 </button>
 
-                <div style={{ aspectRatio: "4/5" }}>
+                <motion.div
+                  className="relative overflow-hidden" style={{ aspectRatio: "4/5", touchAction: "pan-y" }}
+                  drag={zoomed ? false : "x"}
+                  dragConstraints={{ left: 0, right: 0 }}
+                  dragElastic={0.6}
+                  onDragEnd={(_e, info) => {
+                    if (info.offset.x < -70) goToItem(1);
+                    else if (info.offset.x > 70) goToItem(-1);
+                  }}
+                >
                   {activeItem.type === "photo" ? (
-                    <img
+                    <motion.img
                       src={activeItem.url} alt="" className="w-full h-full object-cover"
+                      animate={{ scale: zoomed ? 2.2 : 1 }}
+                      transition={{ duration: 0.25 }}
+                      onDoubleClick={() => setZoomed((z) => !z)}
+                      style={{ cursor: zoomed ? "zoom-out" : "zoom-in" }}
                       onError={() => { const id = activeItem.id; setItems((prev) => prev.filter((i) => i.id !== id)); setActiveItem(null); healBrokenMediaRow(id); }}
                     />
                   ) : (
@@ -2401,7 +2700,27 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
                       onError={() => { const id = activeItem.id; setItems((prev) => prev.filter((i) => i.id !== id)); setActiveItem(null); healBrokenMediaRow(id); }}
                     />
                   )}
-                </div>
+                  {visible.length > 1 && (
+                    <>
+                      <button
+                        onClick={() => goToItem(-1)}
+                        aria-label="Anterior"
+                        className="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full flex items-center justify-center"
+                        style={{ background: "rgba(0,0,0,0.4)" }}
+                      >
+                        <ChevronLeft style={{ width: 20, height: 20, color: CREAM }} />
+                      </button>
+                      <button
+                        onClick={() => goToItem(1)}
+                        aria-label="Siguiente"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full flex items-center justify-center"
+                        style={{ background: "rgba(0,0,0,0.4)" }}
+                      >
+                        <ChevronRight style={{ width: 20, height: 20, color: CREAM }} />
+                      </button>
+                    </>
+                  )}
+                </motion.div>
 
                 <div className="p-5">
                   <button
@@ -2748,6 +3067,108 @@ function NosotrosSection({ guest }: { guest: GuestRecord | null }) {
   );
 }
 
+// ─── Reacciones ─────────────────────────────────────────────────────────────
+
+const REACTIONS = [
+  { emoji: "❤️", label: "Me encantó" },
+  { emoji: "😍", label: "Hermosa invitación" },
+  { emoji: "🎉", label: "Emocionado por asistir" },
+  { emoji: "🥰", label: "Felices por ustedes" },
+] as const;
+
+interface FloatingReaction {
+  id: string;
+  emoji: string;
+  x: number;
+}
+
+function ReactionsSection({ guest }: { guest: GuestRecord | null }) {
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  const [floating, setFloating] = useState<FloatingReaction[]>([]);
+
+  const fetchCounts = async () => {
+    if (!supabase) return;
+    const { data, error } = await supabase.from("wedding_reactions").select("emoji");
+    if (error) { console.error(error); return; }
+    const next: Record<string, number> = {};
+    (data ?? []).forEach((row) => { next[row.emoji] = (next[row.emoji] ?? 0) + 1; });
+    setCounts(next);
+  };
+
+  useEffect(() => {
+    if (!supabaseReady || !supabase) return;
+    fetchCounts();
+    const channel = supabase
+      .channel("wedding_reactions_changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "wedding_reactions" }, fetchCounts)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  const react = async (emoji: string) => {
+    hapticTap();
+    const flyId = crypto.randomUUID();
+    setFloating((prev) => [...prev, { id: flyId, emoji, x: (Math.random() - 0.5) * 40 }]);
+    window.setTimeout(() => setFloating((prev) => prev.filter((f) => f.id !== flyId)), 1400);
+
+    if (!supabase) return;
+    const { error } = await supabase.from("wedding_reactions").insert({ emoji, guest_id: guest?.id ?? null });
+    if (error) console.error(error);
+    else fetchCounts();
+  };
+
+  return (
+    <section className="py-16 px-6 text-center" style={{ background: "linear-gradient(160deg, #F2EDE3 0%, #FAF8F3 100%)" }}>
+      <Reveal>
+        <p className="text-[10px] tracking-[0.35em] uppercase mb-2" style={{ fontFamily: SANS, color: GOLD }}>
+          Reacciona
+        </p>
+        <h3 className="text-2xl mb-8" style={{ fontFamily: SCRIPT, color: "#5C4A32" }}>
+          Así se sienten nuestros invitados
+        </h3>
+      </Reveal>
+
+      <Reveal delay={0.1}>
+        <div className="flex justify-center gap-4 sm:gap-6 flex-wrap">
+          {REACTIONS.map((r) => (
+            <div key={r.emoji} className="relative flex flex-col items-center gap-2">
+              <AnimatePresence>
+                {floating.filter((f) => f.emoji === r.emoji).map((f) => (
+                  <motion.span
+                    key={f.id}
+                    initial={{ opacity: 1, y: 0, x: 0, scale: 0.6 }}
+                    animate={{ opacity: 0, y: -70, x: f.x, scale: 1.3 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 1.3, ease: "easeOut" }}
+                    className="absolute -top-2 text-2xl pointer-events-none select-none"
+                  >
+                    {r.emoji}
+                  </motion.span>
+                ))}
+              </AnimatePresence>
+              <motion.button
+                onClick={() => react(r.emoji)}
+                whileTap={{ scale: 0.85 }}
+                whileHover={{ scale: 1.08 }}
+                className="w-16 h-16 sm:w-[72px] sm:h-[72px] rounded-full flex items-center justify-center text-3xl"
+                style={{ background: CREAM, border: `1px solid rgba(196,168,130,0.3)`, boxShadow: "0 4px 14px rgba(60,45,20,0.1)" }}
+              >
+                {r.emoji}
+              </motion.button>
+              <p className="text-[9px] tracking-widest uppercase max-w-[80px]" style={{ fontFamily: SANS, color: TAN }}>
+                {r.label}
+              </p>
+              <p className="text-sm" style={{ fontFamily: SERIF, color: BROWN }}>
+                {counts[r.emoji] ?? 0}
+              </p>
+            </div>
+          ))}
+        </div>
+      </Reveal>
+    </section>
+  );
+}
+
 function OurStoryContent() {
   const milestones = [
     { date: "Febrero 2025",   title: "El primer encuentro",     desc: "Nos conocimos en el gimnasio. Yo vendía champús y no pude evitar fijarme en lo hermoso de su cabello — fue la excusa perfecta para acercarme a ella.", img: IMG.historiaEncuentro },
@@ -2775,7 +3196,7 @@ function OurStoryContent() {
                   {m.date}
                 </span>
                 <h3 className="text-xl mb-2" style={{ fontFamily: SERIF, color: BROWN }}>{m.title}</h3>
-                <p className="text-xs leading-relaxed" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
+                <p className="text-sm leading-relaxed" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
                   {m.desc}
                 </p>
               </div>
@@ -3023,7 +3444,7 @@ function LoveNotesContent({ guest }: { guest: GuestRecord | null }) {
   return (
     <div className="max-w-2xl mx-auto">
       <Ornament />
-      <p className="text-sm leading-relaxed max-w-sm mx-auto mt-6 mb-10 text-center" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
+      <p className="text-base leading-relaxed max-w-sm mx-auto mt-6 mb-10 text-center" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
         Déjanos una nota de tu corazón. La leeremos en nuestro matrimonio y guardaremos para siempre.
       </p>
 
@@ -3097,6 +3518,191 @@ function LoveNotesContent({ guest }: { guest: GuestRecord | null }) {
           {justSent && (
             <p className="text-center text-xs" style={{ fontFamily: SANS, color: "#8A6A3A" }}>
               ¡Gracias por tu nota! Ya está en el muro. 🤍
+            </p>
+          )}
+        </form>
+      </Reveal>
+    </div>
+  );
+}
+
+// ─── Muro de mensajes para los novios ──────────────────────────────────────
+
+function MessagesWallContent({ guest }: { guest: GuestRecord | null }) {
+  const [messages, setMessages] = useState<WeddingMessage[]>([]);
+  const [form, setForm] = useState({ name: "", message: "" });
+  const [loading, setLoading] = useState(false);
+  const [justSent, setJustSent] = useState(false);
+  const [mineIds, setMineIds] = useState<Set<string>>(() => readMine(MY_MESSAGES_KEY));
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const fetchMessages = async () => {
+    if (!supabase) return;
+    const { data, error } = await supabase.from("wedding_messages").select("*").order("created_at", { ascending: true });
+    if (error) { console.error(error); return; }
+    setMessages((data ?? []).map((row) => ({
+      id: row.id, guestId: row.guest_id, name: row.name, message: row.message, timestamp: row.created_at,
+    })));
+  };
+
+  useEffect(() => {
+    if (!supabaseReady || !supabase) return;
+    fetchMessages();
+    const channel = supabase
+      .channel("wedding_messages_changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "wedding_messages" }, fetchMessages)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const interactingRef = useRef(false);
+  const resumeTimeoutRef = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    let raf: number;
+    const step = () => {
+      const el = scrollerRef.current;
+      if (el && !interactingRef.current && el.scrollWidth > el.clientWidth + 4) {
+        el.scrollLeft += 0.4;
+        const max = el.scrollWidth - el.clientWidth;
+        if (el.scrollLeft >= max) el.scrollLeft = 0;
+      }
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  const pauseAutoScroll = () => {
+    interactingRef.current = true;
+    window.clearTimeout(resumeTimeoutRef.current);
+  };
+  const scheduleResume = () => {
+    window.clearTimeout(resumeTimeoutRef.current);
+    resumeTimeoutRef.current = window.setTimeout(() => { interactingRef.current = false; }, 2200);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.name.trim() || !form.message.trim()) return;
+    setLoading(true);
+    try {
+      if (supabaseReady && supabase) {
+        const { data: inserted, error } = await supabase.from("wedding_messages").insert({
+          guest_id: guest?.id ?? null,
+          name: form.name.trim(),
+          message: form.message.trim(),
+        }).select().single();
+        if (error) throw error;
+        if (inserted) {
+          rememberMine(MY_MESSAGES_KEY, inserted.id);
+          setMineIds(readMine(MY_MESSAGES_KEY));
+        }
+        await fetchMessages();
+      }
+      setForm({ name: "", message: "" });
+      setJustSent(true);
+      hapticTap();
+      setTimeout(() => setJustSent(false), 4000);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!supabase) return;
+    setDeletingId(id);
+    try {
+      const { error } = await supabase.from("wedding_messages").delete().eq("id", id);
+      if (error) throw error;
+      await fetchMessages();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const cardBg = (i: number) => (i % 3 === 0 ? "#FAF6EE" : i % 3 === 1 ? "#F5EFE2" : "#F0EBD8");
+
+  return (
+    <div className="max-w-2xl mx-auto">
+      <Ornament />
+      <p className="text-sm leading-relaxed max-w-sm mx-auto mt-6 mb-10 text-center" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
+        Déjanos un mensaje especial — quedará guardado para siempre como un recuerdo de este día.
+      </p>
+
+      {messages.length > 0 && (
+        <div
+          ref={scrollerRef}
+          className="gallery-scroller flex gap-4 overflow-x-auto pb-2 mb-10"
+          style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}
+          onMouseEnter={pauseAutoScroll}
+          onMouseLeave={scheduleResume}
+          onTouchStart={pauseAutoScroll}
+          onTouchEnd={scheduleResume}
+        >
+          {messages.map((m, i) => (
+            <div key={m.id} className="flex-shrink-0 p-5 relative" style={{
+              width: 220,
+              background: cardBg(i),
+              border: `1px solid rgba(196,168,130,0.22)`,
+              borderRadius: 2,
+              boxShadow: "0 2px 12px rgba(0,0,0,0.04)",
+            }}>
+              <Mail style={{ width: 14, height: 14, color: GOLD, position: "absolute", top: 14, right: 14 }} />
+              <p className="text-sm leading-relaxed mb-3" style={{ fontFamily: SERIF, color: BROWN, fontStyle: "italic" }}>
+                "{m.message}"
+              </p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[10px] tracking-widest uppercase" style={{ fontFamily: SANS, color: GOLD }}>
+                  — {m.name}
+                </p>
+                {mineIds.has(m.id) && (
+                  <button
+                    onClick={() => handleDelete(m.id)}
+                    disabled={deletingId === m.id}
+                    className="text-[9px] tracking-widest uppercase flex-shrink-0 disabled:opacity-50"
+                    style={{ fontFamily: SANS, color: "#C4604A" }}
+                  >
+                    {deletingId === m.id ? "…" : "Eliminar"}
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Reveal delay={0.15}>
+        <form onSubmit={handleSubmit} className="max-w-md mx-auto space-y-5">
+          <input
+            type="text" placeholder="Tu nombre" required
+            className="w-full px-0 py-3 bg-transparent border-b text-sm outline-none"
+            style={{ fontFamily: SANS, color: BROWN, borderBottomColor: "rgba(196,168,130,0.4)", borderBottomStyle: "solid", borderBottomWidth: 1 }}
+            value={form.name}
+            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+          />
+          <textarea
+            placeholder="Escribe tu mensaje para los novios…"
+            rows={4} required
+            className="w-full px-0 py-3 bg-transparent border-b text-sm outline-none resize-none"
+            style={{ fontFamily: SANS, color: BROWN, borderBottomColor: "rgba(196,168,130,0.4)", borderBottomStyle: "solid", borderBottomWidth: 1 }}
+            value={form.message}
+            onChange={(e) => setForm((f) => ({ ...f, message: e.target.value }))}
+          />
+          <GoldButton type="submit" disabled={loading} className="w-full py-4">
+            {loading
+              ? <div className="w-4 h-4 border-2 border-white/25 border-t-white rounded-full animate-spin" />
+              : <><Mail style={{ width: 14, height: 14 }} /> Enviar mensaje</>
+            }
+          </GoldButton>
+          {justSent && (
+            <p className="text-center text-xs" style={{ fontFamily: SANS, color: "#8A6A3A" }}>
+              ¡Gracias por tu mensaje! Ya está en el muro. 💌
             </p>
           )}
         </form>
@@ -3237,7 +3843,7 @@ function RSVPContent({ onSuccess, initialName = "", guest }: {
       <Ornament />
 
       {guest && (
-        <p className="text-center text-xs mb-6 -mt-2" style={{ fontFamily: SANS, color: TAN }}>
+        <p className="text-center text-sm mb-6 -mt-2" style={{ fontFamily: SANS, color: TAN }}>
           Tienen <strong style={{ color: BROWN }}>{guest.passes}</strong> {guest.passes === 1 ? "pase disponible" : "pases disponibles"}
         </p>
       )}
@@ -3375,8 +3981,51 @@ interface RsvpResult {
   wantsLodging: boolean;
 }
 
+const CONFETTI_COLORS = [GOLD, GOLD_DARK, "#EDE4D0", "#D9C79E"];
+
+/** Confeti discreto y elegante — unas cuantas partículas doradas cayendo, no
+ *  la lluvia de colores típica. Se desmonta sola a los pocos segundos. */
+const CONFETTI_PIECES = Array.from({ length: 28 }, (_, i) => ({
+  id: i,
+  left: 4 + ((i * 37) % 92),
+  delay: (i * 0.07) % 1.2,
+  duration: 2.6 + ((i * 13) % 10) / 10,
+  rotate: (i * 47) % 360,
+  color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+  size: 5 + (i % 3) * 2,
+}));
+
+function ConfettiBurst() {
+  const pieces = CONFETTI_PIECES;
+
+  return (
+    <div className="fixed inset-0 z-[95] pointer-events-none overflow-hidden">
+      {pieces.map((p) => (
+        <motion.span
+          key={p.id}
+          initial={{ y: "-10vh", x: 0, opacity: 1, rotate: 0 }}
+          animate={{ y: "110vh", x: [0, 15, -15, 0], opacity: [1, 1, 0], rotate: p.rotate }}
+          transition={{ duration: p.duration, delay: p.delay, ease: "easeIn" }}
+          style={{
+            position: "absolute", top: 0, left: `${p.left}%`,
+            width: p.size, height: p.size * 1.6,
+            background: p.color, borderRadius: 1,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 function ThankYouContent({ result }: { result: RsvpResult }) {
   const { name, attending, wantsLodging } = result;
+  const [showConfetti, setShowConfetti] = useState(attending);
+
+  useEffect(() => {
+    if (!attending) return;
+    const t = window.setTimeout(() => setShowConfetti(false), 3200);
+    return () => window.clearTimeout(t);
+  }, [attending]);
 
   const whatsappHref = (() => {
     const msg = attending
@@ -3387,6 +4036,7 @@ function ThankYouContent({ result }: { result: RsvpResult }) {
 
   return (
     <div className="max-w-md mx-auto text-center">
+      {showConfetti && <ConfettiBurst />}
       <motion.div
         initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
         transition={{ type: "spring", damping: 20, stiffness: 200 }}
@@ -4858,6 +5508,7 @@ export default function App() {
             <VideoSection />
             <MoreDetailsHub rsvpResult={rsvpResult} onRsvpSuccess={handleRsvpSuccess} guestName={guestName} guest={guest} />
             <NosotrosSection guest={guest} />
+            <ReactionsSection guest={guest} />
             <MapSection />
             <Footer onAdminClick={() => setAdmin(true)} />
             <MusicPlayer
