@@ -1680,42 +1680,78 @@ function SmartCalendarContent() {
 
 // ─── Agenda de Viaje ───────────────────────────────────────────────────────
 
-function TravelPlanContent() {
-  const blocks = [
-    {
-      icon: Plane,
-      title: "Compra de tiquetes",
-      desc: "El aeropuerto más cercano a Tolú es el de Corozal o el de Montería; Cartagena también es una buena opción con más vuelos disponibles. Te recomendamos comprar con tiempo — los precios suben mucho cerca de diciembre.",
-    },
-    {
-      icon: Navigation,
-      title: "Transporte recomendado",
-      desc: "Desde el aeropuerto hasta Tolú puedes tomar transporte terrestre o coordinar con nosotros — escríbenos por WhatsApp y te ayudamos a organizarlo.",
-    },
-    {
-      icon: Calendar,
-      title: "Fechas importantes",
-      desc: "La boda es el 5 de diciembre de 2026 a las 4:30 PM. Te sugerimos llegar uno o dos días antes para descansar del viaje.",
-    },
-  ];
+const RECOMMENDED_AIRPORTS = [
+  {
+    name: "Aeropuerto Golfo de Morrosquillo (TLU) — Tolú",
+    tag: "Opción directa",
+    desc: "Ideal si vienes desde Bogotá — Satena tiene vuelos directos al municipio del evento.",
+  },
+  {
+    name: "Aeropuerto Los Garzones (MTR) — Montería",
+    tag: "Más frecuencias",
+    desc: "El de más vuelos nacionales (Avianca, Latam, Clic). Desde ahí, ~1h30 en carro hasta Tolú/Coveñas.",
+  },
+  {
+    name: "Aeropuerto Las Brujas (CZU) — Corozal",
+    tag: "Alternativa",
+    desc: "A una hora en carro de las playas del Golfo de Morrosquillo.",
+  },
+];
 
+function TravelPlanContent() {
   return (
     <div className="max-w-lg mx-auto">
       <Ornament />
-      <div className="space-y-6 mt-6">
-        {blocks.map((b, i) => (
-          <Reveal key={b.title} delay={i * 0.08}>
-            <div className="flex gap-4 items-start text-left">
-              <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "rgba(196,168,130,0.14)" }}>
-                <b.icon style={{ width: 17, height: 17, color: GOLD }} />
-              </div>
-              <div>
-                <h3 className="text-base mb-1" style={{ fontFamily: SERIF, color: BROWN }}>{b.title}</h3>
-                <p className="text-sm leading-relaxed" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>{b.desc}</p>
+      <div className="space-y-8 mt-6">
+        <Reveal>
+          <div className="flex gap-4 items-start text-left">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "rgba(196,168,130,0.14)" }}>
+              <Plane style={{ width: 17, height: 17, color: GOLD }} />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-base mb-3" style={{ fontFamily: SERIF, color: BROWN }}>Aeropuertos recomendados</h3>
+              <div className="space-y-4">
+                {RECOMMENDED_AIRPORTS.map((a) => (
+                  <div key={a.name}>
+                    <p className="text-sm" style={{ fontFamily: SANS, color: BROWN, fontWeight: 500 }}>
+                      {a.name}
+                      <span className="ml-2 text-[9px] tracking-widest uppercase" style={{ color: GOLD }}>· {a.tag}</span>
+                    </p>
+                    <p className="text-sm leading-relaxed" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>{a.desc}</p>
+                  </div>
+                ))}
               </div>
             </div>
-          </Reveal>
-        ))}
+          </div>
+        </Reveal>
+
+        <Reveal delay={0.1}>
+          <div className="flex gap-4 items-start text-left">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "rgba(196,168,130,0.14)" }}>
+              <Navigation style={{ width: 17, height: 17, color: GOLD }} />
+            </div>
+            <div>
+              <h3 className="text-base mb-1" style={{ fontFamily: SERIF, color: BROWN }}>Transporte recomendado</h3>
+              <p className="text-sm leading-relaxed" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
+                Desde Montería o Corozal necesitarás transporte terrestre hasta Tolú/Coveñas — coordinemos contigo por WhatsApp para ayudarte a organizarlo.
+              </p>
+            </div>
+          </div>
+        </Reveal>
+
+        <Reveal delay={0.18}>
+          <div className="flex gap-4 items-start text-left">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "rgba(196,168,130,0.14)" }}>
+              <Calendar style={{ width: 17, height: 17, color: GOLD }} />
+            </div>
+            <div>
+              <h3 className="text-base mb-1" style={{ fontFamily: SERIF, color: BROWN }}>Fechas importantes</h3>
+              <p className="text-sm leading-relaxed" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
+                La boda es el 5 de diciembre de 2026 a las 4:30 PM. Te sugerimos llegar uno o dos días antes para descansar del viaje.
+              </p>
+            </div>
+          </div>
+        </Reveal>
       </div>
     </div>
   );
@@ -1723,18 +1759,42 @@ function TravelPlanContent() {
 
 // ─── Hospedaje (información) ────────────────────────────────────────────────
 
+const NEARBY_HOTELS = [
+  { name: "Hotel Punta Faro", note: "Opción premium, en el Golfo" },
+  { name: "Hotel Loimar", note: "En el casco urbano de Tolú" },
+  { name: "Hotel Playa Azul / Cabañas San José", note: "Zona hotelera de Coveñas, a pocos minutos de la playa del evento" },
+];
+
 function LodgingInfoContent() {
   return (
     <div className="max-w-lg mx-auto text-center">
       <Ornament />
       <p className="text-sm leading-relaxed max-w-sm mx-auto mt-2 mb-8" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
-        Estamos organizando algunas opciones de hospedaje cerca del lugar del evento en Playa Francés, Tolú. Muy pronto actualizaremos esta sección con hoteles recomendados, distancias exactas y tarifas especiales para nuestros invitados.
+        Tenemos 10 cupos exclusivos de hospedaje en el mismo lugar de la boda, a $350.000 la noche.
       </p>
-      <div className="p-6" style={{ border: `1px dashed rgba(196,168,130,0.4)`, borderRadius: 4 }}>
+      <div className="p-6 mb-8" style={{ background: "rgba(196,168,130,0.08)", border: `1px solid rgba(196,168,130,0.25)`, borderRadius: 4 }}>
         <Hotel style={{ width: 22, height: 22, color: GOLD, margin: "0 auto 10px" }} />
         <p className="text-sm" style={{ fontFamily: SERIF, color: BROWN, fontStyle: "italic" }}>
-          Si prefieres asegurar tu cupo de hospedaje en el mismo lugar del evento, puedes reservarlo directamente al confirmar tu asistencia — los cupos son limitados.
+          Puedes reservar tu cupo directamente al confirmar tu asistencia — el formulario te muestra en vivo cuántos cupos quedan disponibles.
         </p>
+      </div>
+
+      <p className="text-[10px] tracking-[0.35em] uppercase mb-4" style={{ fontFamily: SANS, color: GOLD }}>
+        Hoteles alternativos en Tolú y Coveñas
+      </p>
+      <p className="text-xs mb-5" style={{ fontFamily: SANS, color: TAN }}>
+        Tarifas promedio de $180.000 a $300.000 la noche
+      </p>
+      <div className="space-y-3 text-left max-w-sm mx-auto">
+        {NEARBY_HOTELS.map((h) => (
+          <div key={h.name} className="flex items-start gap-3 px-4 py-3" style={{ border: `1px solid rgba(196,168,130,0.2)`, borderRadius: 4 }}>
+            <Hotel style={{ width: 15, height: 15, color: GOLD, flexShrink: 0, marginTop: 2 }} />
+            <div>
+              <p className="text-sm" style={{ fontFamily: SANS, color: BROWN, fontWeight: 500 }}>{h.name}</p>
+              <p className="text-xs" style={{ fontFamily: SANS, color: TAN }}>{h.note}</p>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
