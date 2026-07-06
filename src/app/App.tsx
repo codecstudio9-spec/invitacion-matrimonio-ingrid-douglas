@@ -1850,7 +1850,7 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
 
   const [activeItem, setActiveItem] = useState<GalleryItem | null>(null);
   useBodyScrollLock(!!activeItem);
-  const [commentForm, setCommentForm] = useState({ name: "", message: "" });
+  const [commentForm, setCommentForm] = useState({ name: guest?.displayName ?? "", message: "" });
 
   const [addOpen, setAddOpen] = useState(false);
   const [addName, setAddName] = useState(guest?.displayName ?? "");
@@ -2372,7 +2372,7 @@ const GUEST_MEDIA_DEFAULT_FOLDERS = ["Ceremonia", "Recepción", "Fiesta", "Otros
 function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
   const [items, setItems] = useState<GuestMediaItem[]>([]);
   const [activeFolder, setActiveFolder] = useState("Todas");
-  const [name, setName] = useState("");
+  const [name, setName] = useState(guest?.displayName ?? "");
   const [folder, setFolder] = useState(GUEST_MEDIA_DEFAULT_FOLDERS[0]);
   const [newFolder, setNewFolder] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -2380,7 +2380,7 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
   const [reactions, setReactions] = useState<WeddingReaction[]>([]);
   const [activeItem, setActiveItem] = useState<GuestMediaItem | null>(null);
   const [comments, setComments] = useState<GuestMediaComment[]>([]);
-  const [commentForm, setCommentForm] = useState({ name: "", message: "" });
+  const [commentForm, setCommentForm] = useState({ name: guest?.displayName ?? "", message: "" });
   const [uploadFeedback, setUploadFeedback] = useState<"success" | "error" | null>(null);
   const [myMediaIds, setMyMediaIds] = useState<Set<string>>(() => readMine(MY_MEDIA_KEY));
   const [deleting, setDeleting] = useState(false);
@@ -3406,7 +3406,7 @@ function GiftsContent() {
 
 function LoveNotesContent({ guest }: { guest: GuestRecord | null }) {
   const [notes, setNotes] = useState<LoveNote[]>([]);
-  const [form, setForm] = useState({ name: "", note: "" });
+  const [form, setForm] = useState({ name: guest?.displayName ?? "", note: "" });
   const [loading, setLoading] = useState(false);
   const [justSent, setJustSent] = useState(false);
   const [myNoteIds, setMyNoteIds] = useState<Set<string>>(() => readMine(MY_NOTES_KEY));
