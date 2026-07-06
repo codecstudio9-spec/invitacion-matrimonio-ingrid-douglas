@@ -1855,11 +1855,10 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
 
   const fetchReactions = async () => {
     if (!supabase) return;
-    const { data, error } = await supabase.from("wedding_reactions").select("*");
+    const { data, error } = await supabase.from("wedding_reactions").select("id,emoji,media_id,count,created_at");
     if (error) { console.error(error); return; }
     setReactions((data ?? []).map((row) => ({
-      id: row.id, emoji: row.emoji, mediaId: row.media_id ?? null, photoSrc: row.photo_src ?? null,
-      guestId: row.guest_id ?? null, timestamp: row.created_at,
+      id: row.id, emoji: row.emoji, mediaId: row.media_id, count: row.count ?? 1, timestamp: row.created_at,
     })));
   };
 
@@ -1971,10 +1970,12 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
 
   const itemSrc = (item: GalleryItem) => (item.kind === "static" ? item.src : item.media.url);
   const itemType = (item: GalleryItem): "photo" | "video" => (item.kind === "static" ? "photo" : item.media.type);
+  // Las fotos fijas de /public no son filas de guest_media, así que no
+  // tienen media_id — solo lo que suben los invitados puede recibir
+  // reacciones (coincide con lo que Douglas pidió: reaccionar a "lo que se
+  // suba", no a las fotos precargadas).
   const itemReactions = (item: GalleryItem) =>
-    item.kind === "static"
-      ? reactions.filter((r) => r.photoSrc === item.src)
-      : reactions.filter((r) => r.mediaId === item.media.id);
+    item.kind === "static" ? [] : reactions.filter((r) => r.mediaId === item.media.id);
   const itemComments = (item: GalleryItem) =>
     item.kind === "static"
       ? staticComments.filter((c) => c.photoSrc === item.src)
@@ -2120,12 +2121,15 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
                   )}
                   <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.5) 0%, transparent 45%)" }} />
                   <div className="absolute bottom-2 left-2 flex items-center gap-2 text-[10px]" style={{ fontFamily: SANS, color: CREAM }}>
-                    {itemReactions(item).length > 0 && (
-                      <span className="flex items-center gap-1">
-                        <Heart style={{ width: 11, height: 11 }} fill={GOLD} stroke={CREAM} />
-                        {itemReactions(item).length}
-                      </span>
-                    )}
+                    {(() => {
+                      const total = itemReactions(item).reduce((sum, r) => sum + r.count, 0);
+                      return total > 0 && (
+                        <span className="flex items-center gap-1">
+                          <Heart style={{ width: 11, height: 11 }} fill={GOLD} stroke={CREAM} />
+                          {total}
+                        </span>
+                      );
+                    })()}
                     <span className="flex items-center gap-1">
                       <MessageCircle style={{ width: 11, height: 11 }} stroke={CREAM} />
                       {itemComments(item).length}
@@ -2287,13 +2291,14 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
 
               <div className="p-5">
                 <div className="flex items-center justify-between gap-2 mb-5 flex-wrap">
-                  <ItemReactions
-                    targetKey={activeItem.key}
-                    target={activeItem.kind === "static" ? { photo_src: activeItem.src } : { media_id: activeItem.media.id }}
-                    reactions={itemReactions(activeItem)}
-                    guestId={guest?.id ?? null}
-                    onChanged={fetchReactions}
-                  />
+                  {activeItem.kind === "community" ? (
+                    <ItemReactions
+                      targetKey={activeItem.key}
+                      mediaId={activeItem.media.id}
+                      reactions={itemReactions(activeItem)}
+                      onChanged={fetchReactions}
+                    />
+                  ) : <span />}
                   {activeItem.kind === "community" && myMediaIds.has(activeItem.media.id) && (
                     <button
                       onClick={() => handleDeleteMine(activeItem.media)}
@@ -2404,11 +2409,10 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
 
   const fetchReactions = async () => {
     if (!supabase) return;
-    const { data, error } = await supabase.from("wedding_reactions").select("*");
+    const { data, error } = await supabase.from("wedding_reactions").select("id,emoji,media_id,count,created_at");
     if (error) { console.error(error); return; }
     setReactions((data ?? []).map((row) => ({
-      id: row.id, emoji: row.emoji, mediaId: row.media_id ?? null, photoSrc: row.photo_src ?? null,
-      guestId: row.guest_id ?? null, timestamp: row.created_at,
+      id: row.id, emoji: row.emoji, mediaId: row.media_id, count: row.count ?? 1, timestamp: row.created_at,
     })));
   };
 
@@ -2618,7 +2622,7 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                 {visible.map((item, i) => {
-                  const itemReactionCount = reactions.filter((r) => r.mediaId === item.id).length;
+                  const itemReactionCount = reactions.filter((r) => r.mediaId === item.id).reduce((sum, r) => sum + r.count, 0);
                   const commentCount = comments.filter((c) => c.mediaId === item.id).length;
                   return (
                     <Reveal key={item.id} delay={Math.min(i * 0.03, 0.3)}>
@@ -2751,9 +2755,8 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
                   <div className="mb-4">
                     <ItemReactions
                       targetKey={`c:${activeItem.id}`}
-                      target={{ media_id: activeItem.id }}
+                      mediaId={activeItem.id}
                       reactions={reactions.filter((r) => r.mediaId === activeItem.id)}
-                      guestId={guest?.id ?? null}
                       onChanged={fetchReactions}
                     />
                   </div>
@@ -3102,68 +3105,85 @@ const REACTIONS = [
 interface WeddingReaction {
   id: string;
   emoji: string;
-  mediaId: string | null;
-  photoSrc: string | null;
-  guestId: string | null;
+  mediaId: string;
+  count: number;
   timestamp: string;
 }
 
+// wedding_reactions no tiene guest_id ni una fila por persona — es una fila
+// por (media_id, emoji) con un contador compartido. La única forma honesta
+// de saber "ya reaccioné con esto" sin cuenta real es recordarlo en este
+// mismo dispositivo.
 const MY_REACTIONS_KEY = "my_wedding_reactions";
 
-function getMyReactionId(targetKey: string, emoji: string): string | null {
+function hasMyReaction(targetKey: string, emoji: string): boolean {
   try {
-    const map = JSON.parse(localStorage.getItem(MY_REACTIONS_KEY) || "{}");
-    return map[`${targetKey}:${emoji}`] ?? null;
+    const set: string[] = JSON.parse(localStorage.getItem(MY_REACTIONS_KEY) || "[]");
+    return set.includes(`${targetKey}:${emoji}`);
   } catch {
-    return null;
+    return false;
   }
 }
 
-function setMyReactionId(targetKey: string, emoji: string, id: string | null) {
+function setMyReaction(targetKey: string, emoji: string, mine: boolean) {
   try {
-    const map = JSON.parse(localStorage.getItem(MY_REACTIONS_KEY) || "{}");
-    if (id) map[`${targetKey}:${emoji}`] = id;
-    else delete map[`${targetKey}:${emoji}`];
-    localStorage.setItem(MY_REACTIONS_KEY, JSON.stringify(map));
+    const set = new Set<string>(JSON.parse(localStorage.getItem(MY_REACTIONS_KEY) || "[]"));
+    const key = `${targetKey}:${emoji}`;
+    if (mine) set.add(key); else set.delete(key);
+    localStorage.setItem(MY_REACTIONS_KEY, JSON.stringify(Array.from(set)));
   } catch { /* localStorage no disponible */ }
 }
 
-/** Barra de reacciones para UNA foto/video puntual — reemplaza el botón de
- *  "me gusta" único por 4 emojis, cada uno con su propio conteo en vivo.
- *  `targetKey` identifica la foto (para recordar "ya reaccioné con esto" en
- *  este dispositivo); `target` es lo que se guarda en Supabase. */
-function ItemReactions({ targetKey, target, reactions, guestId, onChanged }: {
+/** Barra de reacciones para UNA foto/video de guest_media — reemplaza el
+ *  botón de "me gusta" único por 4 emojis, cada uno con su propio conteo en
+ *  vivo. Cada emoji es una sola fila compartida en wedding_reactions con un
+ *  contador (no una fila por persona), así que sumamos/restamos ese contador
+ *  en vez de insertar/borrar una fila propia. */
+function ItemReactions({ targetKey, mediaId, reactions, onChanged }: {
   targetKey: string;
-  target: { media_id: string; photo_src?: never } | { photo_src: string; media_id?: never };
+  mediaId: string;
   reactions: WeddingReaction[];
-  guestId: string | null;
   onChanged: () => void;
 }) {
   const [flying, setFlying] = useState<{ id: string; emoji: string; x: number }[]>([]);
 
-  const countFor = (emoji: string) => reactions.filter((r) => r.emoji === emoji).length;
+  const rowFor = (emoji: string) => reactions.find((r) => r.emoji === emoji);
+  const countFor = (emoji: string) => rowFor(emoji)?.count ?? 0;
 
   const toggle = async (emoji: string) => {
     if (!supabase) return;
-    const existingId = getMyReactionId(targetKey, emoji);
-    if (existingId) {
-      const { error } = await supabase.from("wedding_reactions").delete().eq("id", existingId);
-      if (!error) { setMyReactionId(targetKey, emoji, null); onChanged(); }
+    const mine = hasMyReaction(targetKey, emoji);
+    const existing = rowFor(emoji);
+
+    if (mine) {
+      if (existing && existing.count > 1) {
+        await supabase.from("wedding_reactions").update({ count: existing.count - 1 }).eq("id", existing.id);
+      } else if (existing) {
+        await supabase.from("wedding_reactions").delete().eq("id", existing.id);
+      }
+      setMyReaction(targetKey, emoji, false);
+      onChanged();
       return;
     }
+
     hapticTap();
     const flyId = crypto.randomUUID();
     setFlying((prev) => [...prev, { id: flyId, emoji, x: (Math.random() - 0.5) * 30 }]);
     window.setTimeout(() => setFlying((prev) => prev.filter((f) => f.id !== flyId)), 1200);
 
-    const { data, error } = await supabase.from("wedding_reactions").insert({ emoji, guest_id: guestId, ...target }).select().single();
-    if (!error && data) { setMyReactionId(targetKey, emoji, data.id); onChanged(); }
+    if (existing) {
+      await supabase.from("wedding_reactions").update({ count: existing.count + 1 }).eq("id", existing.id);
+    } else {
+      await supabase.from("wedding_reactions").insert({ media_id: mediaId, emoji, count: 1 });
+    }
+    setMyReaction(targetKey, emoji, true);
+    onChanged();
   };
 
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
       {REACTIONS.map((r) => {
-        const mine = !!getMyReactionId(targetKey, r.emoji);
+        const mine = hasMyReaction(targetKey, r.emoji);
         const count = countFor(r.emoji);
         return (
           <div key={r.emoji} className="relative">
