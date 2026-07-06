@@ -86,6 +86,21 @@ function broadcastGuestMediaChanged() {
   window.dispatchEvent(new Event(GUEST_MEDIA_CHANGED_EVENT));
 }
 
+// Si un archivo ya no existe en Storage (por ejemplo, se borró el archivo
+// físico pero la fila sobrevivió por una política de RLS faltante), la
+// tarjeta queda apuntando a un recuadro roto/fantasma. En cuanto CUALQUIER
+// dispositivo detecta que la imagen/video no carga, la escondemos de su
+// propia pantalla al instante y de paso intentamos borrar la fila huérfana
+// de una vez — así se autolimpia sola en cuanto los permisos de borrado
+// estén al día, sin dejar nunca un recuadro vacío a la vista.
+function healBrokenMediaRow(id: string) {
+  if (!supabase) return;
+  supabase.from("guest_media").delete().eq("id", id).then(({ error }) => {
+    if (error) console.error("No se pudo autolimpiar la fila huérfana:", error);
+    else broadcastGuestMediaChanged();
+  });
+}
+
 interface GuestMediaItem {
   id: string;
   guestId: string | null;
@@ -1794,8 +1809,24 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
                   style={{ width: 168, height: 210, boxShadow: "0 4px 14px rgba(60,45,20,0.16)" }}
                 >
                   {type === "photo"
-                    ? <img src={src} alt="" className="w-full h-full object-cover" draggable={false} />
-                    : <video src={src} className="w-full h-full object-cover" muted playsInline />}
+                    ? <img
+                        src={src} alt="" className="w-full h-full object-cover" draggable={false}
+                        onError={() => {
+                          if (item.kind !== "community") return;
+                          const id = item.media.id;
+                          setCommunityItems((prev) => prev.filter((m) => m.id !== id));
+                          healBrokenMediaRow(id);
+                        }}
+                      />
+                    : <video
+                        src={src} className="w-full h-full object-cover" muted playsInline
+                        onError={() => {
+                          if (item.kind !== "community") return;
+                          const id = item.media.id;
+                          setCommunityItems((prev) => prev.filter((m) => m.id !== id));
+                          healBrokenMediaRow(id);
+                        }}
+                      />}
                   {type === "video" && (
                     <div className="absolute inset-0 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.15)" }}>
                       <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.45)" }}>
@@ -1917,8 +1948,26 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
 
               <div className="relative" style={{ aspectRatio: "4/5" }}>
                 {itemType(activeItem) === "photo"
-                  ? <img src={itemSrc(activeItem)} alt="" className="w-full h-full object-cover" />
-                  : <video src={itemSrc(activeItem)} controls playsInline className="w-full h-full object-cover" />}
+                  ? <img
+                      src={itemSrc(activeItem)} alt="" className="w-full h-full object-cover"
+                      onError={() => {
+                        if (activeItem.kind !== "community") return;
+                        const id = activeItem.media.id;
+                        setCommunityItems((prev) => prev.filter((m) => m.id !== id));
+                        setActiveItem(null);
+                        healBrokenMediaRow(id);
+                      }}
+                    />
+                  : <video
+                      src={itemSrc(activeItem)} controls playsInline className="w-full h-full object-cover"
+                      onError={() => {
+                        if (activeItem.kind !== "community") return;
+                        const id = activeItem.media.id;
+                        setCommunityItems((prev) => prev.filter((m) => m.id !== id));
+                        setActiveItem(null);
+                        healBrokenMediaRow(id);
+                      }}
+                    />}
                 <button
                   onClick={() => goTo(-1)}
                   aria-label="Anterior"
@@ -2273,9 +2322,15 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
                         style={{ aspectRatio: "4/5" }}
                       >
                         {item.type === "photo" ? (
-                          <img src={item.url} alt="" className="w-full h-full object-cover" />
+                          <img
+                            src={item.url} alt="" className="w-full h-full object-cover"
+                            onError={() => { setItems((prev) => prev.filter((i) => i.id !== item.id)); healBrokenMediaRow(item.id); }}
+                          />
                         ) : (
-                          <video src={item.url} className="w-full h-full object-cover" muted playsInline />
+                          <video
+                            src={item.url} className="w-full h-full object-cover" muted playsInline
+                            onError={() => { setItems((prev) => prev.filter((i) => i.id !== item.id)); healBrokenMediaRow(item.id); }}
+                          />
                         )}
                         {item.type === "video" && (
                           <div className="absolute inset-0 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.15)" }}>
@@ -2336,9 +2391,15 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
 
                 <div style={{ aspectRatio: "4/5" }}>
                   {activeItem.type === "photo" ? (
-                    <img src={activeItem.url} alt="" className="w-full h-full object-cover" />
+                    <img
+                      src={activeItem.url} alt="" className="w-full h-full object-cover"
+                      onError={() => { const id = activeItem.id; setItems((prev) => prev.filter((i) => i.id !== id)); setActiveItem(null); healBrokenMediaRow(id); }}
+                    />
                   ) : (
-                    <video src={activeItem.url} className="w-full h-full object-cover" controls autoPlay playsInline />
+                    <video
+                      src={activeItem.url} className="w-full h-full object-cover" controls autoPlay playsInline
+                      onError={() => { const id = activeItem.id; setItems((prev) => prev.filter((i) => i.id !== id)); setActiveItem(null); healBrokenMediaRow(id); }}
+                    />
                   )}
                 </div>
 
@@ -4401,8 +4462,14 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
                   style={{ aspectRatio: "4/5" }}
                 >
                   {m.type === "photo"
-                    ? <img src={m.url} alt="" className="w-full h-full object-cover" />
-                    : <video src={m.url} className="w-full h-full object-cover" muted playsInline />}
+                    ? <img
+                        src={m.url} alt="" className="w-full h-full object-cover"
+                        onError={() => { setGuestMediaItems((prev) => prev.filter((x) => x.id !== m.id)); healBrokenMediaRow(m.id); }}
+                      />
+                    : <video
+                        src={m.url} className="w-full h-full object-cover" muted playsInline
+                        onError={() => { setGuestMediaItems((prev) => prev.filter((x) => x.id !== m.id)); healBrokenMediaRow(m.id); }}
+                      />}
                   {m.type === "video" && (
                     <div className="absolute inset-0 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.15)" }}>
                       <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.45)" }}>
