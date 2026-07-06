@@ -807,9 +807,11 @@ function BeachVideoBackdrop() {
         autoPlay muted loop playsInline
         preload="auto"
         poster={IMG.hero}
+        disablePictureInPicture
+        disableRemotePlayback
         style={{
           position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover",
-          transform: "translateZ(0)", willChange: "transform",
+          transform: "translateZ(0)", willChange: "transform", backfaceVisibility: "hidden",
         }}
       >
         <source src={VIDEO_FILE} type="video/mp4" />
@@ -883,23 +885,28 @@ function EnvelopeScreen({ onOpen, startMusic, guestName }: { onOpen: () => void;
         </p>
       </motion.div>
 
-      {/* ══ Envelope group — floats gently at idle ══ */}
+      {/* ══ Envelope group — floats gently at idle ══
+          Nota de rendimiento: el bamboleo en reposo antes solo animaba "y"
+          Y "rotateX" a la vez — animar rotateX dentro de un contexto con
+          perspective obliga al navegador a recalcular una matriz 3D completa
+          en cada frame, compitiendo por GPU con la decodificación del video
+          de fondo (la causa más probable de que se sintiera menos fluido en
+          Android). Ahora en reposo solo se mueve en "y" (2D, mucho más
+          barato) — el giro 3D se reserva para cuando el sobre realmente se
+          abre. */}
       <motion.div
         className="relative z-10"
         animate={
           exiting
             ? { y: -180, opacity: 0, scale: 0.72, rotateX: 12 }
-            : { y: [0, -7, 0], rotateX: [0, 1.5, 0] }
+            : { y: [0, -7, 0] }
         }
         transition={
           exiting
             ? { duration: 1.05, ease: [0.4, 0, 1, 1] }
-            : {
-                y:       { duration: 4.5, repeat: Infinity, ease: "easeInOut" },
-                rotateX: { duration: 4.5, repeat: Infinity, ease: "easeInOut" },
-              }
+            : { y: { duration: 4.5, repeat: Infinity, ease: "easeInOut" } }
         }
-        style={{ perspective: 900, perspectiveOrigin: "50% 85%" }}
+        style={{ perspective: 900, perspectiveOrigin: "50% 85%", willChange: "transform" }}
       >
         <div style={{ width: "min(370px, 90vw)", position: "relative" }}>
 
@@ -994,8 +1001,12 @@ function EnvelopeScreen({ onOpen, startMusic, guestName }: { onOpen: () => void;
                   height: "62%",
                   transformOrigin: "50% 0%",
                   transform: flapOpen ? "rotateX(-178deg)" : "rotateX(0deg)",
-                  transition: flapOpen ? "transform 1.25s cubic-bezier(0.3, 1.4, 0.55, 1)" : "none",
+                  // Antes tenía un "overshoot" (rebote) que se sentía menos
+                  // pulido — esta curva (expo-out, la misma que ya usan la
+                  // carta y otros elementos) desacelera suave y sin rebote.
+                  transition: flapOpen ? "transform 1.3s cubic-bezier(0.16, 1, 0.3, 1)" : "none",
                   transformStyle: "preserve-3d",
+                  willChange: "transform",
                   zIndex: flapOpen ? 1 : 6,
                 }}
               >
@@ -1467,6 +1478,8 @@ function VideoSection() {
         playsInline
         preload="auto"
         poster={IMG.hero}
+        disablePictureInPicture
+        disableRemotePlayback
         style={{
           position: "absolute",
           inset: 0,
@@ -1475,6 +1488,7 @@ function VideoSection() {
           objectFit: "cover",
           transform: "translateZ(0)",
           willChange: "transform",
+          backfaceVisibility: "hidden",
         }}
       >
         <source src={VIDEO_FILE} type="video/mp4" />
