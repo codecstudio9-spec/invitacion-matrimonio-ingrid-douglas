@@ -834,10 +834,12 @@ function EnvelopeScreen({ onOpen, startMusic, guestName }: { onOpen: () => void;
     // Direct result of the user's click — browsers allow audio.play() here.
     startMusic();
 
+    // Secuencia más lenta y pausada — cada fase tiene tiempo de respirar antes
+    // de que empiece la siguiente, para que se sienta más ceremonioso.
     setPhase("seal-break");
-    setTimeout(() => setPhase("flap-open"), 620);
-    setTimeout(() => setPhase("card-rise"), 1600);
-    setTimeout(() => { setPhase("done"); onOpen(); }, 3100);
+    setTimeout(() => setPhase("flap-open"), 900);
+    setTimeout(() => setPhase("card-rise"), 2350);
+    setTimeout(() => { setPhase("done"); onOpen(); }, 4500);
   };
 
   const flapOpen = ["flap-open", "card-rise", "done"].includes(phase);
@@ -877,10 +879,10 @@ function EnvelopeScreen({ onOpen, startMusic, guestName }: { onOpen: () => void;
         transition={{ duration: 1.5, delay: 0.7, ease: "easeOut" }}
         className="relative z-10 text-center mb-10 sm:mb-14"
       >
-        <p className="tracking-[0.55em] text-[9px] uppercase mb-2" style={{ fontFamily: SANS, color: "rgba(156,130,100,0.8)" }}>
+        <p className="tracking-[0.55em] uppercase mb-2" style={{ fontFamily: SANS, color: "rgba(156,130,100,0.8)", fontSize: 9.9 }}>
           Una invitación especial
         </p>
-        <p className="leading-tight max-w-[300px] mx-auto px-4" style={{ fontFamily: SCRIPT, color: "#8A7654", fontSize: guestName ? 28 : 30 }}>
+        <p className="leading-tight max-w-[300px] mx-auto px-4" style={{ fontFamily: SCRIPT, color: "#8A7654", fontSize: guestName ? 31 : 33 }}>
           {guestName ? `para: ${guestName}` : "para ti"}
         </p>
       </motion.div>
@@ -903,7 +905,7 @@ function EnvelopeScreen({ onOpen, startMusic, guestName }: { onOpen: () => void;
         }
         transition={
           exiting
-            ? { duration: 1.05, ease: [0.4, 0, 1, 1] }
+            ? { duration: 1.3, ease: [0.4, 0, 1, 1] }
             : { y: { duration: 4.5, repeat: Infinity, ease: "easeInOut" } }
         }
         style={{ perspective: 900, perspectiveOrigin: "50% 85%", willChange: "transform" }}
@@ -1004,7 +1006,7 @@ function EnvelopeScreen({ onOpen, startMusic, guestName }: { onOpen: () => void;
                   // Antes tenía un "overshoot" (rebote) que se sentía menos
                   // pulido — esta curva (expo-out, la misma que ya usan la
                   // carta y otros elementos) desacelera suave y sin rebote.
-                  transition: flapOpen ? "transform 1.3s cubic-bezier(0.16, 1, 0.3, 1)" : "none",
+                  transition: flapOpen ? "transform 1.7s cubic-bezier(0.16, 1, 0.3, 1)" : "none",
                   transformStyle: "preserve-3d",
                   willChange: "transform",
                   zIndex: flapOpen ? 1 : 6,
@@ -1040,8 +1042,8 @@ function EnvelopeScreen({ onOpen, startMusic, guestName }: { onOpen: () => void;
                     }
                     transition={
                       phase === "seal-break"
-                        ? { duration: 0.55, times: [0, 0.35, 0.65, 1], ease: "easeInOut" }
-                        : { duration: 0.5, ease: "easeIn" }
+                        ? { duration: 0.8, times: [0, 0.35, 0.65, 1], ease: "easeInOut" }
+                        : { duration: 0.7, ease: "easeIn" }
                     }
                   >
                     <WaxSeal cracked={phase !== "idle"} />
@@ -1055,7 +1057,7 @@ function EnvelopeScreen({ onOpen, startMusic, guestName }: { onOpen: () => void;
                 background: "linear-gradient(to bottom, rgba(0,0,0,0.15) 0%, transparent 65%)",
                 clipPath: "polygon(0 0, 100% 0, 50% 100%)",
                 opacity: flapOpen ? 1 : 0,
-                transition: "opacity 0.5s ease 0.25s",
+                transition: "opacity 0.7s ease 0.35s",
                 pointerEvents: "none", zIndex: 2,
               }} />
 
@@ -1064,7 +1066,7 @@ function EnvelopeScreen({ onOpen, startMusic, guestName }: { onOpen: () => void;
               <motion.div
                 initial={false}
                 animate={{ opacity: flapOpen ? [0, 0.8, 0.4] : 0, scale: flapOpen ? [0.6, 1.3] : 0.6 }}
-                transition={{ duration: 1.1, ease: "easeOut", delay: 0.15 }}
+                transition={{ duration: 1.5, ease: "easeOut", delay: 0.2 }}
                 style={{
                   position: "absolute", left: "50%", bottom: 18, width: 140, height: 140,
                   transform: "translateX(-50%)",
@@ -1084,8 +1086,13 @@ function EnvelopeScreen({ onOpen, startMusic, guestName }: { onOpen: () => void;
                 }
                 transition={
                   exiting
-                    ? { duration: 1.1, ease: [0.4, 0, 1, 1] }
-                    : { duration: 1.05, ease: [0.16, 1, 0.3, 1], delay: cardUp ? 0.05 : 0.22 }
+                    ? { duration: 1.3, ease: [0.4, 0, 1, 1] }
+                    : cardUp
+                      // Spring en vez de una curva fija — se comporta como algo con
+                      // peso real (una leve inercia natural al frenar), en vez de
+                      // desacelerar de forma perfectamente matemática.
+                      ? { type: "spring", damping: 15, stiffness: 70, mass: 1.1, delay: 0.1 }
+                      : { duration: 1.4, ease: [0.16, 1, 0.3, 1], delay: 0.3 }
                 }
                 style={{
                   position: "absolute",
@@ -1116,13 +1123,13 @@ function EnvelopeScreen({ onOpen, startMusic, guestName }: { onOpen: () => void;
                     <rect x="5.5" y="0" width="2" height="18" rx="1" fill={GOLD} />
                     <rect x="0"   y="5.5" width="13" height="2" rx="1" fill={GOLD} />
                   </svg>
-                  <span style={{ fontFamily: SANS, color: "rgba(158,122,65,0.88)", fontSize: 7.5, letterSpacing: "0.52em", textTransform: "uppercase" }}>
+                  <span style={{ fontFamily: SANS, color: "rgba(158,122,65,0.88)", fontSize: 8.25, letterSpacing: "0.52em", textTransform: "uppercase" }}>
                     Invitación
                   </span>
-                  <span style={{ fontFamily: SCRIPT, color: "#3E2C18", fontSize: 23, lineHeight: 1.1 }}>
+                  <span style={{ fontFamily: SCRIPT, color: "#3E2C18", fontSize: 25.3, lineHeight: 1.1 }}>
                     Ingrid & Douglas
                   </span>
-                  <span style={{ fontFamily: SANS, color: "rgba(135,100,50,0.82)", fontSize: 8.5, letterSpacing: "0.3em" }}>
+                  <span style={{ fontFamily: SANS, color: "rgba(135,100,50,0.82)", fontSize: 9.35, letterSpacing: "0.3em" }}>
                     5 · XII · 2026
                   </span>
                 </div>
@@ -1140,7 +1147,7 @@ function EnvelopeScreen({ onOpen, startMusic, guestName }: { onOpen: () => void;
         transition={{ delay: 2.4, duration: 1.1 }}
         className="absolute bottom-12 flex flex-col items-center gap-3 z-10"
       >
-        <p className="tracking-[0.5em] text-[9px] uppercase" style={{ fontFamily: SANS, color: "rgba(156,120,80,0.68)" }}>
+        <p className="tracking-[0.5em] uppercase" style={{ fontFamily: SANS, color: "rgba(156,120,80,0.68)", fontSize: 9.9 }}>
           Toca para abrir
         </p>
         <motion.div animate={{ y: [0, 8, 0] }} transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}>
