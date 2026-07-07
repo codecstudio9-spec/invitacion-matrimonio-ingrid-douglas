@@ -1840,7 +1840,6 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
     "/primer aniversario.jpg",
     "/1780201087881.jpg",
     "/1780201308415.jpg",
-    "/IMG-20250615-WA0024.jpg",
     "/IMG-20250828-WA0013 (1).jpg",
     "/501329850_1868882853952502_5367565030893768263_n (1).jpg",
     "/Screenshot_20251214_230500_WhatsApp.jpg",
@@ -2100,6 +2099,23 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
             onTouchStart={pauseAutoScroll}
             onTouchEnd={scheduleResume}
           >
+            {/* "+" — siempre visible primero; el resto de la tira se duplica para el loop infinito, así que si quedara al final quedaría prácticamente inalcanzable */}
+            <button
+              type="button"
+              onClick={() => setAddOpen(true)}
+              className="relative flex-shrink-0 rounded-lg flex flex-col items-center justify-center gap-2 transition-colors"
+              style={{
+                width: 168, height: 210,
+                border: `1px dashed rgba(196,168,130,0.55)`,
+                background: "rgba(196,168,130,0.06)",
+              }}
+            >
+              <Plus style={{ width: 26, height: 26, color: GOLD }} />
+              <span className="text-[10px] tracking-widest uppercase" style={{ fontFamily: SANS, color: TAN }}>
+                Agregar foto
+              </span>
+            </button>
+
             {[...items, ...items].map((item, i) => {
               const src = itemSrc(item);
               const type = itemType(item);
@@ -2160,22 +2176,6 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
               );
             })}
 
-            {/* "+" — cualquiera puede sumar una foto o video a este muro */}
-            <button
-              type="button"
-              onClick={() => setAddOpen(true)}
-              className="relative flex-shrink-0 rounded-lg flex flex-col items-center justify-center gap-2 transition-colors"
-              style={{
-                width: 168, height: 210,
-                border: `1px dashed rgba(196,168,130,0.55)`,
-                background: "rgba(196,168,130,0.06)",
-              }}
-            >
-              <Plus style={{ width: 26, height: 26, color: GOLD }} />
-              <span className="text-[10px] tracking-widest uppercase" style={{ fontFamily: SANS, color: TAN }}>
-                Agregar foto
-              </span>
-            </button>
           </div>
         </Reveal>
       </div>
