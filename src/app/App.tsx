@@ -55,6 +55,14 @@ function rememberMine(storageKey: string, id: string) {
   } catch { /* localStorage no disponible — simplemente no verá el botón de borrar */ }
 }
 
+function forgetMine(storageKey: string, id: string) {
+  try {
+    const set = new Set<string>(JSON.parse(localStorage.getItem(storageKey) || "[]"));
+    set.delete(id);
+    localStorage.setItem(storageKey, JSON.stringify(Array.from(set)));
+  } catch { /* localStorage no disponible */ }
+}
+
 function readMine(storageKey: string): Set<string> {
   try {
     return new Set<string>(JSON.parse(localStorage.getItem(storageKey) || "[]"));
@@ -1861,7 +1869,17 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
   const [addOpen, setAddOpen] = useState(false);
   const [addName, setAddName] = useState(guest?.displayName ?? "");
   const [addFile, setAddFile] = useState<File | null>(null);
+  const [addPreviewUrl, setAddPreviewUrl] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+
+  // Vista previa del archivo elegido — antes solo se veía el nombre del
+  // archivo, sin confirmación visual de qué foto/video se iba a subir.
+  useEffect(() => {
+    if (!addFile) { setAddPreviewUrl(null); return; }
+    const url = URL.createObjectURL(addFile);
+    setAddPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [addFile]);
   const [uploadFeedback, setUploadFeedback] = useState<"success" | "error" | null>(null);
   const [myMediaIds, setMyMediaIds] = useState<Set<string>>(() => readMine(MY_MEDIA_KEY));
   const [deleting, setDeleting] = useState(false);
@@ -1933,9 +1951,20 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
       .on("postgres_changes", { event: "*", schema: "public", table: "guest_media" }, fetchCommunity)
       .subscribe();
     window.addEventListener(GUEST_MEDIA_CHANGED_EVENT, fetchCommunity);
+    // En iPhone, Safari suele cortar el websocket de Realtime cuando la
+    // pestaña pasa a segundo plano (se bloquea el teléfono, se cambia de
+    // app) y no siempre lo reconecta solo — así, una foto borrada en otro
+    // dispositivo mientras tanto puede seguir viéndose acá hasta refrescar
+    // a mano. Forzamos una relectura real cada vez que se vuelve a esta
+    // pestaña, para que el borrado se refleje siempre, no solo por suerte.
+    const onVisible = () => { if (document.visibilityState === "visible") fetchCommunity(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("pageshow", onVisible);
     return () => {
       supabase.removeChannel(channel);
       window.removeEventListener(GUEST_MEDIA_CHANGED_EVENT, fetchCommunity);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("pageshow", onVisible);
     };
   }, []);
 
@@ -2036,9 +2065,12 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
       await deleteStorageObject(GUEST_MEDIA_BUCKET, media.url);
       const { error } = await supabase.from("guest_media").delete().eq("id", media.id);
       if (error) throw error;
+      forgetMine(MY_MEDIA_KEY, media.id);
+      setMyMediaIds(readMine(MY_MEDIA_KEY));
       setCommunityItems((prev) => prev.filter((m) => m.id !== media.id));
       setActiveItem(null);
       broadcastGuestMediaChanged();
+      await fetchCommunity();
     } catch (err) {
       console.error(err);
     } finally {
@@ -2093,7 +2125,7 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
           <div
             ref={scrollerRef}
             className="gallery-scroller flex gap-4 overflow-x-auto pb-2"
-            style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}
+            style={{ scrollbarWidth: "none" }}
             onMouseEnter={pauseAutoScroll}
             onMouseLeave={scheduleResume}
             onTouchStart={pauseAutoScroll}
@@ -2213,6 +2245,15 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
                   value={addName}
                   onChange={(e) => setAddName(e.target.value)}
                 />
+                {addPreviewUrl && (
+                  <div className="relative rounded-lg overflow-hidden" style={{ aspectRatio: "4/3", background: "#1a1208" }}>
+                    {addFile?.type.startsWith("video") ? (
+                      <video src={addPreviewUrl} muted playsInline controls className="w-full h-full object-cover" />
+                    ) : (
+                      <img src={addPreviewUrl} alt="Vista previa" className="w-full h-full object-cover" />
+                    )}
+                  </div>
+                )}
                 <label className="flex items-center gap-3 px-4 py-3 cursor-pointer" style={{ border: `1px dashed rgba(196,168,130,0.45)`, borderRadius: 4 }}>
                   <Upload style={{ width: 16, height: 16, color: GOLD, flexShrink: 0 }} />
                   <span className="text-xs truncate" style={{ fontFamily: SANS, color: addFile ? BROWN : TAN }}>
@@ -2383,9 +2424,19 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
   const [folder, setFolder] = useState(GUEST_MEDIA_DEFAULT_FOLDERS[0]);
   const [newFolder, setNewFolder] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [reactions, setReactions] = useState<WeddingReaction[]>([]);
   const [activeItem, setActiveItem] = useState<GuestMediaItem | null>(null);
+
+  // Vista previa del archivo elegido — antes solo se veía el nombre del
+  // archivo, sin confirmación visual de qué foto/video se iba a subir.
+  useEffect(() => {
+    if (!file) { setPreviewUrl(null); return; }
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
   const [comments, setComments] = useState<GuestMediaComment[]>([]);
   const [commentForm, setCommentForm] = useState({ name: guest?.displayName ?? "", message: "" });
   const [uploadFeedback, setUploadFeedback] = useState<"success" | "error" | null>(null);
@@ -2422,9 +2473,16 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
       .subscribe();
 
     window.addEventListener(GUEST_MEDIA_CHANGED_EVENT, fetchItems);
+    // Ver GalleryContent — Safari en iPhone corta el websocket de Realtime en
+    // segundo plano, así que forzamos una relectura real al volver a la pestaña.
+    const onVisible = () => { if (document.visibilityState === "visible") fetchItems(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("pageshow", onVisible);
     return () => {
       supabase.removeChannel(channel);
       window.removeEventListener(GUEST_MEDIA_CHANGED_EVENT, fetchItems);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("pageshow", onVisible);
     };
   }, []);
 
@@ -2533,9 +2591,12 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
       await deleteStorageObject(GUEST_MEDIA_BUCKET, item.url);
       const { error } = await supabase.from("guest_media").delete().eq("id", item.id);
       if (error) throw error;
+      forgetMine(MY_MEDIA_KEY, item.id);
+      setMyMediaIds(readMine(MY_MEDIA_KEY));
       setItems((prev) => prev.filter((i) => i.id !== item.id));
       setActiveItem(null);
       broadcastGuestMediaChanged();
+      await fetchItems();
     } catch (err) {
       console.error(err);
     } finally {
@@ -2601,6 +2662,15 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
                   />
                 </div>
 
+                {previewUrl && (
+                  <div className="relative rounded-lg overflow-hidden" style={{ aspectRatio: "4/3", background: "#1a1208" }}>
+                    {file?.type.startsWith("video") ? (
+                      <video src={previewUrl} muted playsInline controls className="w-full h-full object-cover" />
+                    ) : (
+                      <img src={previewUrl} alt="Vista previa" className="w-full h-full object-cover" />
+                    )}
+                  </div>
+                )}
                 <label className="flex items-center gap-3 px-4 py-3 cursor-pointer" style={{ border: `1px dashed rgba(196,168,130,0.45)`, borderRadius: 4 }}>
                   <Upload style={{ width: 16, height: 16, color: GOLD, flexShrink: 0 }} />
                   <span className="text-xs truncate" style={{ fontFamily: SANS, color: file ? BROWN : TAN }}>
@@ -3526,7 +3596,7 @@ function LoveNotesContent({ guest }: { guest: GuestRecord | null }) {
         <div
           ref={scrollerRef}
           className="gallery-scroller flex gap-4 overflow-x-auto pb-2 mb-10"
-          style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}
+          style={{ scrollbarWidth: "none" }}
           onMouseEnter={pauseAutoScroll}
           onMouseLeave={scheduleResume}
           onTouchStart={pauseAutoScroll}
@@ -4334,9 +4404,14 @@ function AdminDashboard({ onClose }: { onClose: () => void }) {
       .on("postgres_changes", { event: "*", schema: "public", table: "guest_media" }, fetchMedia)
       .subscribe();
     window.addEventListener(GUEST_MEDIA_CHANGED_EVENT, fetchMedia);
+    const onVisible = () => { if (document.visibilityState === "visible") fetchMedia(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("pageshow", onVisible);
     return () => {
       supabase.removeChannel(channel);
       window.removeEventListener(GUEST_MEDIA_CHANGED_EVENT, fetchMedia);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("pageshow", onVisible);
     };
   }, []);
 
