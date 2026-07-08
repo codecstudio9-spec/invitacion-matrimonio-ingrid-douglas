@@ -1711,7 +1711,7 @@ function LodgingInfoContent() {
     <div className="max-w-lg mx-auto text-center">
       <Ornament />
       <p className="text-sm leading-relaxed max-w-sm mx-auto mt-2 mb-8" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
-        Tenemos 10 cupos exclusivos de hospedaje en el mismo lugar de la boda, a $350.000 la noche.
+        Tenemos 10 cupos exclusivos de hospedaje en el mismo lugar de la boda, a $350.000 por persona, e incluye las dos noches (entrada y salida).
       </p>
       <div className="p-6 mb-8" style={{ background: "rgba(196,168,130,0.08)", border: `1px solid rgba(196,168,130,0.25)`, borderRadius: 4 }}>
         <Hotel style={{ width: 22, height: 22, color: GOLD, margin: "0 auto 10px" }} />
