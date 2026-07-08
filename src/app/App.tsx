@@ -3883,7 +3883,7 @@ function RSVPContent({ onSuccess, initialName = "", guest }: {
                 </span>
               </label>
               <p className="text-xs mt-2 ml-7" style={{ fontFamily: SANS, color: TAN }}>
-                {formatCOP(lodgingConfig.pricePerNight)} por noche.{" "}
+                {formatCOP(lodgingConfig.pricePerNight)} por persona, para las 2 noches.{" "}
                 {lodgingSlotsLeft > 0
                   ? <>Solo quedan <strong style={{ color: GOLD }}>{lodgingSlotsLeft}</strong> {lodgingSlotsLeft === 1 ? "cupo disponible" : "cupos disponibles"}.</>
                   : <strong style={{ color: "#C4604A" }}>Ya no quedan cupos de hospedaje disponibles.</strong>}
