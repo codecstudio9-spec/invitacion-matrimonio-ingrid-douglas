@@ -1296,7 +1296,7 @@ function DetailsSection() {
           {[
             { Icon: Calendar, label: "Fecha", value: "5 de diciembre, 2026" },
             { Icon: Clock, label: "Hora", value: "4:30 PM" },
-            { Icon: MapPin, label: "Lugar", value: "Playa Francés\nTulu Coveñas, Sucre\nColombia" },
+            { Icon: MapPin, label: "Lugar", value: "Playa Francés\nTolu Coveñas, Sucre\nColombia" },
           ].map(({ Icon, label, value }, i) => (
             <Reveal key={label} delay={i * 0.1}>
               <div className="p-5 flex items-start gap-4" style={{
