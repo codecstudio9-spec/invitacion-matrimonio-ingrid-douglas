@@ -7,7 +7,7 @@ import {
   ExternalLink, Heart, Star, Lock, Search, MessageCircle,
   Check, Users, PenLine, ChevronLeft, ChevronRight,
   Shirt, BookOpen, Images, Gift, Banknote, Music, Eye, EyeOff,
-  Home, DollarSign, MessageSquare, Plane, Hotel, Download,
+  Home, DollarSign, MessageSquare, Plane, Hotel, Download, Car,
 } from "lucide-react";
 import { supabase, supabaseReady, GUEST_MEDIA_BUCKET, VIDEO_GREETINGS_BUCKET } from "./supabase";
 
@@ -1700,10 +1700,13 @@ function SmartCalendarContent() {
 
 // ─── Hospedaje (información) ────────────────────────────────────────────────
 
-const NEARBY_HOTELS = [
-  { name: "Hotel Punta Faro", note: "Opción premium, en el Golfo" },
-  { name: "Hotel Loimar", note: "En el casco urbano de Tolú" },
-  { name: "Hotel Playa Azul / Cabañas San José", note: "Zona hotelera de Coveñas, a pocos minutos de la playa del evento" },
+const RECOMMENDED_HOTEL = { name: "Hotel Sueños Dorados", note: "Tel: 310 606 1317" };
+
+const TRAVEL_STEPS = [
+  { icon: Plane, title: "Vuelo directo a Tolú", note: "Bogotá → Tolú con Satena, aterriza directo en el pueblo." },
+  { icon: Plane, title: "Vía Montería o Cartagena", note: "Bogotá → Montería o Bogotá → Cartagena. Compra tus tiquetes con tiempo para mejores precios." },
+  { icon: Car,   title: "Transporte terrestre hasta Tolú", note: "Club Náutico Mar — recomendado por la wedding planner. Desde Montería o Cartagena hacia Tolú. Contacto: 312 607 3492." },
+  { icon: MapPin, title: "De Tolú a Playa Francés", note: "Último tramo hasta el lugar del evento." },
 ];
 
 function LodgingInfoContent() {
@@ -1721,18 +1724,30 @@ function LodgingInfoContent() {
       </div>
 
       <p className="text-[10px] tracking-[0.35em] uppercase mb-4" style={{ fontFamily: SANS, color: GOLD }}>
-        Hoteles alternativos en Tolú y Coveñas
+        Hotel recomendado
       </p>
-      <p className="text-xs mb-5" style={{ fontFamily: SANS, color: TAN }}>
-        Tarifas promedio de $180.000 a $300.000 la noche
+      <div className="flex items-start gap-3 px-4 py-3 mb-10 text-left max-w-sm mx-auto" style={{ border: `1px solid rgba(196,168,130,0.2)`, borderRadius: 4 }}>
+        <Hotel style={{ width: 15, height: 15, color: GOLD, flexShrink: 0, marginTop: 2 }} />
+        <div>
+          <p className="text-sm" style={{ fontFamily: SANS, color: BROWN, fontWeight: 500 }}>{RECOMMENDED_HOTEL.name}</p>
+          <p className="text-xs" style={{ fontFamily: SANS, color: TAN }}>{RECOMMENDED_HOTEL.note}</p>
+        </div>
+      </div>
+
+      <p className="text-[10px] tracking-[0.35em] uppercase mb-4" style={{ fontFamily: SANS, color: GOLD }}>
+        Cómo llegar a Tolú desde Bogotá
       </p>
       <div className="space-y-3 text-left max-w-sm mx-auto">
-        {NEARBY_HOTELS.map((h) => (
-          <div key={h.name} className="flex items-start gap-3 px-4 py-3" style={{ border: `1px solid rgba(196,168,130,0.2)`, borderRadius: 4 }}>
-            <Hotel style={{ width: 15, height: 15, color: GOLD, flexShrink: 0, marginTop: 2 }} />
+        {TRAVEL_STEPS.map((s, i) => (
+          <div key={s.title} className="flex items-start gap-3 px-4 py-3" style={{ border: `1px solid rgba(196,168,130,0.2)`, borderRadius: 4 }}>
+            <span className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs"
+              style={{ border: `1px solid ${GOLD}`, color: GOLD, fontFamily: SANS }}>
+              {i + 1}
+            </span>
+            <s.icon style={{ width: 15, height: 15, color: GOLD, flexShrink: 0, marginTop: 2 }} />
             <div>
-              <p className="text-sm" style={{ fontFamily: SANS, color: BROWN, fontWeight: 500 }}>{h.name}</p>
-              <p className="text-xs" style={{ fontFamily: SANS, color: TAN }}>{h.note}</p>
+              <p className="text-sm" style={{ fontFamily: SANS, color: BROWN, fontWeight: 500 }}>{s.title}</p>
+              <p className="text-xs" style={{ fontFamily: SANS, color: TAN }}>{s.note}</p>
             </div>
           </div>
         ))}
