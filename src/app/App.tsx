@@ -1707,8 +1707,9 @@ const TRAVEL_STEPS = [
   { icon: Plane, title: "Vuelo directo a Tolú", note: "Bogotá → Tolú con Satena, aterriza directo en el pueblo." },
   { icon: Plane, title: "Vía Montería o Cartagena", note: "Bogotá → Montería o Bogotá → Cartagena. Compra tus tiquetes con tiempo para mejores precios." },
   { icon: Car,   title: "Transporte terrestre hasta Tolú", note: "Club Náutico Mar — recomendado por la wedding planner. Desde Montería o Cartagena hacia Tolú. Contacto: 312 607 3492." },
-  { icon: MapPin, title: "De Tolú a Playa Francés", note: "Último tramo hasta el lugar del evento." },
 ];
+
+const FINAL_DESTINATION = { name: "Awa de Mar", place: "Playa Francés, Tolú, Sucre" };
 
 function LodgingInfoContent() {
   return (
@@ -1752,6 +1753,20 @@ function LodgingInfoContent() {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="mt-8 max-w-sm mx-auto py-8 px-6 text-center"
+        style={{ background: "rgba(196,168,130,0.14)", border: `2px solid ${GOLD}`, borderRadius: 6 }}>
+        <p className="text-[10px] tracking-[0.35em] uppercase mb-3" style={{ fontFamily: SANS, color: GOLD, fontWeight: 600 }}>
+          Destino final
+        </p>
+        <MapPin style={{ width: 34, height: 34, color: GOLD, margin: "0 auto 12px" }} />
+        <p className="text-2xl" style={{ fontFamily: SERIF, color: BROWN, fontWeight: 600 }}>
+          {FINAL_DESTINATION.name}
+        </p>
+        <p className="text-sm mt-1" style={{ fontFamily: SANS, color: TAN }}>
+          {FINAL_DESTINATION.place}
+        </p>
       </div>
     </div>
   );
@@ -3384,20 +3399,20 @@ function MapSection() {
         <Reveal delay={0.1}>
           <div className="overflow-hidden mb-6" style={{ border: `1px solid rgba(196,168,130,0.28)`, borderRadius: 2 }}>
             <iframe
-              src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d62617.8!2d-75.6939!3d9.4012!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x8e59af1e32c2dab3%3A0x6c5b38e49f39e543!2sCove%C3%B1as%2C+Sucre%2C+Colombia!5e0!3m2!1ses!2sco!4v1"
+              src="https://www.google.com/maps?q=Awa+de+Mar+Playa+Frances+Tolu+Sucre+Colombia&output=embed"
               width="100%" height="280" style={{ border: 0 }}
               allowFullScreen loading="lazy" referrerPolicy="no-referrer-when-downgrade"
-              title="Playa Francés, Coveñas"
+              title="Awa de Mar, Playa Francés, Tolú"
             />
           </div>
         </Reveal>
 
         <Reveal delay={0.2}>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <GoldButton onClick={() => window.open("https://www.google.com/maps/dir/?api=1&destination=Cove%C3%B1as,Sucre,Colombia", "_blank")}>
+            <GoldButton onClick={() => window.open("https://www.google.com/maps/dir/?api=1&destination=Awa+de+Mar+Playa+Frances+Tolu+Sucre+Colombia", "_blank")}>
               <Navigation style={{ width: 15, height: 15 }} /> Cómo llegar
             </GoldButton>
-            <a href="https://maps.google.com/?q=Playa+Frances+Covenas+Sucre+Colombia"
+            <a href="https://maps.google.com/?q=Awa+de+Mar+Playa+Frances+Tolu+Sucre+Colombia"
               target="_blank" rel="noopener noreferrer"
               className="flex items-center justify-center gap-2 px-6 py-3 text-xs tracking-[0.3em] uppercase transition-all duration-300"
               style={{ fontFamily: SANS, color: TAN, border: `1px solid rgba(196,168,130,0.4)`, borderRadius: 2, fontWeight: 500 }}>
