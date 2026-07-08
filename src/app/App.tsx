@@ -1541,11 +1541,12 @@ function VideoSection() {
 function TimelineContent() {
   const schedule = [
     { time: "4:30 PM", event: "Ceremonia", desc: "Frente al mar" },
-    { time: "6:00 PM", event: "Cóctel", desc: "Con familiares y amigos" },
-    { time: "7:30 PM", event: "Recepción", desc: "Brindis y bienvenida" },
-    { time: "8:30 PM", event: "Cena", desc: "Deliciosa cena servida" },
-    { time: "9:30 PM", event: "Celebración", desc: "A celebrar" },
-    { time: "Hasta el amanecer", event: "Sorpresas", desc: "Momentos inolvidables" },
+    { time: "5:30 PM", event: "Sesión de fotos", desc: "Momentos para el recuerdo" },
+    { time: "6:30 PM", event: "Entrada y baile de novios", desc: "Primer baile" },
+    { time: "7:00 PM", event: "Brindis y bienvenida", desc: "Con familiares y amigos" },
+    { time: "7:30 PM", event: "Cena", desc: "Deliciosa cena servida" },
+    { time: "9:00 PM", event: "Celebración", desc: "A celebrar" },
+    { time: "Hasta el amanecer", event: "Sorpresa", desc: "Momentos inolvidables" },
   ];
 
   return (
@@ -1714,7 +1715,7 @@ function LodgingInfoContent() {
     <div className="max-w-lg mx-auto text-center">
       <Ornament />
       <p className="text-sm leading-relaxed max-w-sm mx-auto mt-2 mb-8" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
-        Tenemos 10 cupos exclusivos de hospedaje en el mismo lugar de la boda, a $350.000 por persona, e incluye las dos noches (entrada y salida).
+        Tenemos 10 cupos exclusivos de hospedaje en el mismo lugar de la boda, a $350.000 por persona, e incluye las dos noches (entrada y salida). Niños menores de 6 años no pagan.
       </p>
       <div className="p-6 mb-8" style={{ background: "rgba(196,168,130,0.08)", border: `1px solid rgba(196,168,130,0.25)`, borderRadius: 4 }}>
         <Hotel style={{ width: 22, height: 22, color: GOLD, margin: "0 auto 10px" }} />
