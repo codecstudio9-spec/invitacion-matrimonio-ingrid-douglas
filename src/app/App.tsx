@@ -254,6 +254,17 @@ const AUDIO_FILE = "/pacto.mp3";
 const VIDEO_FILE = "/video.mp4";
 const MUSIC_START_VOLUME = 0.2; // 20%
 
+// Debe coincidir EXACTO con el límite de tamaño de archivo configurado en el
+// bucket "guest-content" de Supabase — el plan Free de Supabase tope fijo en
+// 50MB por archivo (no se puede subir sin pasarse a Pro), así que un video
+// que lo supere queda rechazado sin importar lo que diga este código.
+const MAX_UPLOAD_MB = 50;
+const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
+const oversizeMessage = (file: File) =>
+  file.type.startsWith("video")
+    ? `El video excede el límite de ${MAX_UPLOAD_MB}MB. Por favor, graba un video más corto o reduce su resolución antes de subirlo.`
+    : `"${file.name}" pesa ${(file.size / (1024 * 1024)).toFixed(0)}MB — el máximo permitido es ${MAX_UPLOAD_MB}MB.`;
+
 const SERIF  = "'Playfair Display', serif";
 const SANS   = "'Raleway', sans-serif";
 const SCRIPT = "'Great Vibes', cursive";
@@ -1902,6 +1913,7 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
   const [addFile, setAddFile] = useState<File | null>(null);
   const [addPreviewUrl, setAddPreviewUrl] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [addSizeError, setAddSizeError] = useState<string | null>(null);
 
   // Vista previa del archivo elegido — antes solo se veía el nombre del
   // archivo, sin confirmación visual de qué foto/video se iba a subir.
@@ -2112,10 +2124,10 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!addFile || !supabase) return;
-    const type: "photo" | "video" = addFile.type.startsWith("video") ? "video" : "photo";
-    const path = `${GALLERY_UPLOAD_FOLDER}/${crypto.randomUUID()}-${addFile.name}`;
     setAdding(true);
     try {
+      const type: "photo" | "video" = addFile.type.startsWith("video") ? "video" : "photo";
+      const path = `${GALLERY_UPLOAD_FOLDER}/${crypto.randomUUID()}-${addFile.name}`;
       const { error: uploadError } = await supabase.storage.from(GUEST_MEDIA_BUCKET).upload(path, addFile);
       if (uploadError) throw uploadError;
       const { data: urlData } = supabase.storage.from(GUEST_MEDIA_BUCKET).getPublicUrl(path);
@@ -2267,7 +2279,8 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
               >
                 <X style={{ width: 16, height: 16, color: BROWN }} />
               </button>
-              <h3 className="text-lg mb-4" style={{ fontFamily: SERIF, color: BROWN }}>Suma tu foto o video</h3>
+              <h3 className="text-lg mb-1" style={{ fontFamily: SERIF, color: BROWN }}>Suma tu foto o video</h3>
+              <p className="text-xs mb-4" style={{ fontFamily: SANS, color: TAN }}>Videos de hasta 30 segundos, por favor 🙏</p>
               <form onSubmit={handleAddSubmit} className="space-y-4">
                 <input
                   type="text" placeholder="Tu nombre"
@@ -2291,8 +2304,21 @@ function GalleryContent({ guest }: { guest: GuestRecord | null }) {
                     {addFile ? addFile.name : "Selecciona una foto o video"}
                   </span>
                   <input type="file" accept="image/*,video/*" className="hidden"
-                    onChange={(e) => setAddFile(e.target.files?.[0] ?? null)} />
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] ?? null;
+                      if (f && f.size > MAX_UPLOAD_BYTES) {
+                        setAddSizeError(oversizeMessage(f));
+                        setAddFile(null);
+                        e.target.value = "";
+                        return;
+                      }
+                      setAddSizeError(null);
+                      setAddFile(f);
+                    }} />
                 </label>
+                {addSizeError && (
+                  <p className="text-xs" style={{ fontFamily: SANS, color: "#C4604A" }}>{addSizeError}</p>
+                )}
                 <GoldButton type="submit" disabled={!addFile || adding} className="w-full py-3">
                   {adding
                     ? <div className="w-4 h-4 border-2 border-white/25 border-t-white rounded-full animate-spin" />
@@ -2457,6 +2483,7 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [sizeError, setSizeError] = useState<string | null>(null);
   const [reactions, setReactions] = useState<WeddingReaction[]>([]);
   const [activeItem, setActiveItem] = useState<GuestMediaItem | null>(null);
 
@@ -2650,8 +2677,11 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
     <>
     <div className="max-w-4xl mx-auto">
           <Ornament />
-          <p className="text-sm mt-2 mb-8 max-w-md mx-auto text-center" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
+          <p className="text-sm mt-2 mb-1 max-w-md mx-auto text-center" style={{ fontFamily: SANS, color: TAN, fontWeight: 300 }}>
             Sube las fotos y videos que tomes el día de la boda — quedan aquí para que todos, incluidos nosotros, las veamos juntos.
+          </p>
+          <p className="text-xs mb-8 max-w-md mx-auto text-center" style={{ fontFamily: SANS, color: TAN }}>
+            Videos de hasta 30 segundos y máximo {MAX_UPLOAD_MB}MB, por favor 🙏
           </p>
 
         {!supabaseReady ? (
@@ -2708,8 +2738,21 @@ function GuestMediaContent({ guest }: { guest: GuestRecord | null }) {
                     {file ? file.name : "Selecciona una foto o video"}
                   </span>
                   <input type="file" accept="image/*,video/*" className="hidden"
-                    onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] ?? null;
+                      if (f && f.size > MAX_UPLOAD_BYTES) {
+                        setSizeError(oversizeMessage(f));
+                        setFile(null);
+                        e.target.value = "";
+                        return;
+                      }
+                      setSizeError(null);
+                      setFile(f);
+                    }} />
                 </label>
+                {sizeError && (
+                  <p className="text-xs" style={{ fontFamily: SANS, color: "#C4604A" }}>{sizeError}</p>
+                )}
 
                 <GoldButton type="submit" disabled={!file || uploading} className="w-full py-3">
                   {uploading

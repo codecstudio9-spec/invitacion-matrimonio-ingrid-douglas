@@ -14,8 +14,9 @@ export const supabase: SupabaseClient | null = supabaseReady
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null;
 
-// "guest-content" es el bucket que quedó configurado con límite de 50MB y
-// políticas de select/insert/delete — mejor que "guest-media" (creado antes
-// con políticas más limitadas) para soportar videos largos del celular.
+// "guest-content" es el bucket configurado con límite de 50MB (tope del plan
+// Free de Supabase) y políticas de select/insert/delete — mejor que
+// "guest-media" (creado antes con políticas más limitadas). MAX_UPLOAD_MB en
+// App.tsx debe coincidir con este límite.
 export const GUEST_MEDIA_BUCKET = "guest-content";
 export const VIDEO_GREETINGS_BUCKET = "video-greetings";
